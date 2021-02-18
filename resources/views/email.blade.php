@@ -4,8 +4,9 @@
         <meta charset="utf-8">
         <meta http-equiv="X-UA-Compatible" content="IE=edge">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-
-        <title>Laravel</title>
+        <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css">
+        
+        <title>Payment Initiated</title>
 
         <!-- Fonts -->
         <link href="https://fonts.googleapis.com/css?family=Raleway:100,600" rel="stylesheet" type="text/css">
@@ -21,6 +22,16 @@
                 margin: 0;
             }
 
+            table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+th, td {
+  padding: 8px;
+  text-align: left;
+  border-bottom: 1px solid #ddd;
+}
             .full-height {
                 height: 100vh;
             }
@@ -65,7 +76,24 @@
         </style>
     </head>
     <body>
-        Dear Associate,
-       New work added. Please register to continue...
+        Sir/Madam,
+      <p> New Payment has been initiated by {{$User}}.</p>
+      <table class="table">
+        <thead>
+            <tr>
+            <th>Work ID</th>
+            <th>Customer</th>
+            <th>Amount</th>
+            </tr>
+        </thead>
+      
+      <tbody>
+        <tr>
+            <td>{{$workID}}</td>
+            <td>{{$CustName->Cust_FirstName}} {{$CustName->Cust_LastName}}</td>
+            <td>Rs. {{$amount}}</td>
+      </tr>
+      </tbody>
+      </table>
     </body>
 </html>

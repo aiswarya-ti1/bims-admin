@@ -56,8 +56,8 @@ return [
     */
 
     'from' => [
-        'address' => env('MAIL_FROM_ADDRESS', 'aiswaryagireesh14@gmail.com'),
-        'name' => env('MAIL_FROM_NAME', 'Aiswarya'),
+        'address' => env('MAIL_FROM_ADDRESS', 'noreply.ipl2020@gmail.com'),
+        'name' => env('MAIL_FROM_NAME', 'Wisebrix'),
     ],
 
     /*
@@ -84,9 +84,9 @@ return [
     |
     */
 
-    'username' => 'aiswaryagireesh14@gmail.com',
+    'username' => 'noreply.ipl2020@gmail.com',
 
-    'password' => 'dzfcmbuhjrylcdmd',
+    'password' => 'bhctogzruushusrd',
 
     /*
     |--------------------------------------------------------------------------

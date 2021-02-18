@@ -36,5 +36,7 @@ class VerifyCsrfToken extends Middleware
 '/sendLetterOfIntrest','/biws_updateReqSiteVisit','/biws_confirmAssoc','/biws_rejectAssoc', '/biws_saveRate',
 '/biws_pushBackToPMA','/biws_finishWO','/getEndDate','/sendMail','/biws_addAssociate','/biws_updateAssociate','/biws_AssocSignUp'.
 '/biws_CreateToken','/CreateToken','/editMaterialAssoc','/changeActiveStatus','/biws_sendOTP',
-'/addTemplateEst','/addTempSchedules','/initializePayment','/completePayment'];
+'/addTemplateEst','/addTempSchedules','/initializePayment','/completePayment','/addNewUser',
+'/markNotification','/woSigned','/updateWOMFee','/saveEmailID','/cust_woSigned','/assoc_woSigned',
+'/biws_addCustomer','/biws_resetPassword','/biws_addNewEnquiry'];
 }

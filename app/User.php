@@ -8,7 +8,10 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 class User extends Authenticatable implements JWTSubject
 {
     use Notifiable;
-
+    //use HasApiTokens;
+    protected $table= 'users';
+    protected $guarded = [];
+    public $timestamps = false;
     //protected $connection = 'secondsql';
     /**
      * The attributes that are mass assignable.
@@ -35,5 +38,14 @@ class User extends Authenticatable implements JWTSubject
     public function getJWTCustomClaims()
     {
         return [];
+    }
+    public function routeNotificationForNexmo($notification)
+    {
+        return $this->phone_number;
+    }
+    public function routeNotificationForMail($notification)
+    {
+        // Return email address only...
+        return $this->email_address;
     }
 }

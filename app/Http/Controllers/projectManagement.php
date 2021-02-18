@@ -485,91 +485,140 @@ public function updateSupplierPaymentDetails(Request $r)
 public function initiatePayment(Request $r)
 {
     $values=Request::json()->all();
+    $custName=\DB::table('service_work')->join('sales_lead','sales_lead.Lead_ID','=','service_work.Lead_ID')
+    ->join('sales_customer','sales_customer.Customer_ID','=','sales_lead.Cust_ID')->where('service_work.Work_ID',$values['workID'])->select('Cust_FirstName','Cust_LastName')->get();
+    $data = array('workID'=>$values['workID'],'amount'=>$values['reqAmt'],'CustName'=>$custName[0],'User'=>$values['userName']);
     $reqDate=new DateTime($values['reqDate']);
     $reqDate->modify('+1 day');
-    $chkLimit=\DB::table('work_timeline')->where('Work_ID',$values['workID'])->where('Work_Attrb_ID',38)->pluck('Value');
-    if($chkLimit->count()!=0)
-    {
-
-    if($chkLimit[0] ==1)
-    {
     $totalRec=\DB::table('payment_schedule')
     ->join('split_payments','payment_schedule.Pay_Schedule_ID','=','split_payments.Pay_ID' )
     ->where('Work_ID', $values['workID'])
   ->sum('split_payments.Split_Amount');
   
    $totalInit=\DB::table('initiate_payment')->where('Work_ID', $values['workID'])->where('DeleteFlag',0)->sum('ReqAmount');
-   $existsPayment=$totalRec-$totalInit;
+   $existsPayment=$totalRec-$totalInit;//balance
+    $chkLimit=\DB::table('work_timeline')->where('Work_ID',$values['workID'])->where('Work_Attrb_ID',38)->pluck('Value');
+    if($chkLimit[0] ==1 && $values['typeID']==1)
+    {
+       
    if($values['reqAmt'] > $existsPayment)
    {
        $resp=array("Error"=>true, "Amount"=>$existsPayment);
        return $resp;
    }
    else{
-
-    if($values['typeID']==1)
-    {
     $initiate=\DB::table('initiate_payment')->insert(array('Work_ID'=>$values['workID'],
-     'ReqAmount'=>$values['reqAmt'], 'ReqDate'=>$reqDate->format('Y-m-d'),
-    'PayStatus_ID'=>1,'Comments'=>$values['comment'], 'Trans_Type'=>$values['type']));
-    $resp=array($initiate);
-    return $resp;
+    'ReqAmount'=>$values['reqAmt'], 'ReqDate'=>$reqDate->format('Y-m-d'),
+   'PayStatus_ID'=>1,'Comments'=>$values['comment'], 'Trans_Type'=>$values['type']));
+   /*
+   \Mail::send('email',$data,function($message)
+            {
+                $message->from('noreply.ipl2020@gmail.com','Infrasynergics');
+               // $message->to('emm@inframall.net');
+               // $message->to('pmqa@inframall.net');
+               // $message->to('vkv@inframall.net');
+               $message->to('ti1@inframall.net');
+                $message->subject('Reminder: Payment Initated');
+            }) ; */
+           
+   $resp=array($initiate,'Success'=>true);
+   return $resp;
+
     }
-    else if($values['typeID']==2)
+}
+     if($chkLimit[0] ==1 && $values['typeID']==2)
     {
+$existsReqAmount=\DB::table('initiate_payment')->where('InitPay_ID', $values['payID'])->pluck('ReqAmount');
+$changedReqAmount=$existsReqAmount[0]-$values['reqAmt'];
+$balAmount=$existsPayment+$changedReqAmount;
+
+if($changedReqAmount<0 && $balAmount<=0)
+   {
+       $resp=array("Error"=>true, "Amount"=>$existsPayment, "Changed"=>$changedReqAmount);
+       return $resp;
+   }
+   else {
+
+    if($values['status']==1){
+
         $edit=\DB::table('initiate_payment')
         ->where('Work_ID', $values['workID'])
         ->where('InitPay_ID', $values['payID'])
         ->update(array('ReqAmount'=>$values['reqAmt'], 'ReqDate'=>$reqDate->format('Y-m-d'),'Trans_Type'=>$values['type'],'Comments'=>$values['comment']));
-        $resp=array($edit);
+        $resp=array($edit,'Success'=>true);
     return $resp;
-    }
-}
-}
+        /*
+        \Mail::send('updatePayment',$data,function($message)
+             {
+                 $message->from('noreply.ipl2020@gmail.com','Infrasynergics');
+                 $message->to('emm@inframall.net');
+                 $message->to('pmqa@inframall.net');
+                 $message->to('vkv@inframall.net');
+                //$message->to('ti1@inframall.net');
+                 $message->subject('Reminder: Payment Initated');
+             }) ;*/
+        
+            }
+            else if($values['status']==2 || $values['status']==3|| $values['status']==4)
+            {
+                $mFee= $values['reqAmt']*$values['mFee']/100;
     
-else if($chkLimit[0]==0)
-{
-    if($values['typeID']==1)
-    {
-    $initiate=\DB::table('initiate_payment')->insert(array('Work_ID'=>$values['workID'],
-     'ReqAmount'=>$values['reqAmt'], 'ReqDate'=>$reqDate->format('Y-m-d'),
-    'PayStatus_ID'=>1,'Comments'=>$values['comment'], 'Trans_Type'=>$values['type']));
-    $resp=array($initiate);
+    $assocPay=$values['reqAmt']-$mFee;
+    $edit=\DB::table('initiate_payment')
+    ->where('Work_ID', $values['workID'])
+    ->where('InitPay_ID', $values['payID'])
+    ->update(array('ReqAmount'=>$values['reqAmt'], 'ReqDate'=>$reqDate->format('Y-m-d'),'Trans_Type'=>$values['type'],'Comments'=>$values['comment'],
+    'MFee_Perc'=>$values['mFee'], 'MFee'=>$mFee, 'AssocPay'=>$assocPay,));
+    $resp=array($edit,"Amount"=>$existsPayment,'Success'=>true);
     return $resp;
-    }
-    else if($values['typeID']==2)
-    {
-        $edit=\DB::table('initiate_payment')
-        ->where('Work_ID', $values['workID'])
-        ->where('InitPay_ID', $values['payID'])
-        ->update(array('ReqAmount'=>$values['reqAmt'], 'ReqDate'=>$reqDate->format('Y-m-d'),'Trans_Type'=>$values['type'],'Comments'=>$values['comment']));
-        $resp=array($edit);
-    return $resp;
-    }
-}
-    }
-    else{
-        if($values['typeID']==1)
-    {
-    $initiate=\DB::table('initiate_payment')->insert(array('Work_ID'=>$values['workID'],
-     'ReqAmount'=>$values['reqAmt'], 'ReqDate'=>$reqDate->format('Y-m-d'),
-    'PayStatus_ID'=>1,'Comments'=>$values['comment'], 'Trans_Type'=>$values['type']));
-    $resp=array($initiate);
-    return $resp;
-    }
-    else if($values['typeID']==2)
-    {
-        $edit=\DB::table('initiate_payment')
-        ->where('Work_ID', $values['workID'])
-        ->where('InitPay_ID', $values['payID'])
-        ->update(array('ReqAmount'=>$values['reqAmt'], 'ReqDate'=>$reqDate->format('Y-m-d'),'Trans_Type'=>$values['type'],'Comments'=>$values['comment']));
-        $resp=array($edit);
-    return $resp;
+            }
+
+   }
+
+
     }
 
-$resp=array("Empty Chk");
-    return $resp;
+    if($chkLimit[0]==0)
+    {
+        if($values['typeID']==1)
+        {
+        $initiate=\DB::table('initiate_payment')->insert(array('Work_ID'=>$values['workID'],
+         'ReqAmount'=>$values['reqAmt'], 'ReqDate'=>$reqDate->format('Y-m-d'),
+        'PayStatus_ID'=>1,'Comments'=>$values['comment'], 'Trans_Type'=>$values['type']));
+        /*
+        \Mail::send('email',$data,function($message)
+                 {
+                     $message->from('noreply.ipl2020@gmail.com','Infrasynergics');
+                     $message->to('emm@inframall.net');
+                     $message->to('pmqa@inframall.net');
+                     $message->to('vkv@inframall.net');
+                    //$message->to('ti1@inframall.net');
+                     $message->subject('Reminder: Payment Initated');
+                 }) ;*/
+        $resp=array($initiate);
+        return $resp;
+        }
+        else if($values['typeID']==2)
+        {
+            $edit=\DB::table('initiate_payment')
+            ->where('Work_ID', $values['workID'])
+            ->where('InitPay_ID', $values['payID'])
+            ->update(array('ReqAmount'=>$values['reqAmt'], 'ReqDate'=>$reqDate->format('Y-m-d'),'Trans_Type'=>$values['type'],'Comments'=>$values['comment']));
+            /*
+            \Mail::send('updatePayment',$data,function($message)
+                 {
+                     $message->from('noreply.ipl2020@gmail.com','Infrasynergics');
+                     $message->to('emm@inframall.net');
+                     $message->to('pmqa@inframall.net');
+                     $message->to('vkv@inframall.net');
+                   // $message->to('ti1@inframall.net');
+                     $message->subject('Reminder: Payment Initated');
+                 }) ;*/
+            $resp=array($edit);
+        return $resp;
+        }
     }
+
 }
 
 public function getInitiatePayDetails($id)
@@ -643,11 +692,32 @@ public function updateMFee(Request $r)
 { 
     $values=Request::json()->all();
     $mFee= $values['amount']*$values['perc']/100;
+    $workID=\DB::table('initiate_payment')->where('InitPay_ID', $values['payID'])->pluck('Work_ID');
+    $custName=\DB::table('service_work')->join('sales_lead','sales_lead.Lead_ID','=','service_work.Lead_ID')
+    ->join('sales_customer','sales_customer.Customer_ID','=','sales_lead.Cust_ID')->where('service_work.Work_ID',$workID[0])->select('Cust_FirstName','Cust_LastName')->get();
+    $assocName=\DB::table('work_tendering')->join('associate','associate.Assoc_ID','=','work_tendering.Assoc_ID')->where('Work_ID',$workID[0])->where('SelectStatus',1)
+    ->select('Assoc_FirstName','Assoc_LastName')->get();
+   
+
    $assocPay=$values['amount']-$mFee;
+   $data = array('workID'=>$workID[0],'amount'=>$values['amount'],'CustName'=>$custName[0],'User'=>$values['userName'],
+   'MFee'=>$mFee,'MFeePerc'=>$values['perc'],'Assoc'=>$assocName[0],'AssocPay'=>$assocPay);
+
     if($values['type']==1)
     {
     $mfee=\DB::table('initiate_payment')->where('InitPay_ID', $values['payID'])
     ->update(array('MFee_Perc'=>$values['perc'], 'MFee'=>$mFee, 'AssocPay'=>$assocPay, 'PayStatus_ID'=>4));
+    /*
+    \Mail::send('invoice',$data,function($message)
+    {
+        $message->from('noreply.ipl2020@gmail.com','Infrasynergics');
+        $message->to('emm@inframall.net');
+        $message->to('pmqa@inframall.net');
+        $message->to('vkv@inframall.net');
+      // $message->to('ti1@inframall.net');
+        $message->subject('New Payment Request Generated');
+    }) ;*/
+
     }
     else if($values['type']==2)
     {
@@ -697,7 +767,13 @@ public function getOneContractorInitPayDetails($id)
 public function updateContractorInitPaymentDetails(Request $r)
 {
     $values = Request::json()->all();
-    
+     $workID=\DB::table('initiate_payment')->where('InitPay_ID', $values['payID'])->pluck('Work_ID');
+    $custName=\DB::table('service_work')->join('sales_lead','sales_lead.Lead_ID','=','service_work.Lead_ID')
+    ->join('sales_customer','sales_customer.Customer_ID','=','sales_lead.Cust_ID')->where('service_work.Work_ID',$workID[0])->select('Cust_FirstName','Cust_LastName')->get();
+    $assocName=\DB::table('work_tendering')->join('associate','associate.Assoc_ID','=','work_tendering.Assoc_ID')->where('Work_ID',$workID[0])->where('SelectStatus',1)
+    ->select('Assoc_FirstName','Assoc_LastName')->get();
+   
+  
 
    if($values['typeID']==1)
    {
@@ -705,7 +781,9 @@ public function updateContractorInitPaymentDetails(Request $r)
     $paidDate->modify('+1 day');
     $payment=\DB::table('initiate_payment')->where('InitPay_ID', $values['payID']) ->update(array('Paid_MFee'=>$values['paidAmt'],'Trans_Type'=>$values['tranType'],'M_PaidDate'=>$paidDate->format('Y-m-d'),
     'Trans_ID'=>$values['tranID'], 'MFee_Flag'=>1, 'MFee_Comments'=>$values['comments']));
-    
+   
+    $dataMFee = array('workID'=>$workID[0],'CustName'=>$custName[0],'User'=>$values['userName'],
+    'MFee'=>$values['paidAmt'],'TransID'=>$values['tranID'],'Assoc'=>$assocName[0],'Trans_Type'=>$values['tranType'],'M_PaidDate'=>$paidDate->format('Y-m-d'));
 
 
     
@@ -717,6 +795,10 @@ public function updateContractorInitPaymentDetails(Request $r)
     $payment=\DB::table('initiate_payment')->where('InitPay_ID', $values['payID']) ->update(array('Paid_AssocPay'=>$values['paidAmt'],'Assoc_Trans_Type'=>$values['tranType'],
     'AssocPay_Date'=>$paidDate->format('Y-m-d'),
     'Assoc_Trans_ID'=>$values['tranID'], 'AssocPay_Flag'=>1, 'Assoc_Comments'=>$values['comments']));
+    $dataAssocPay = array('workID'=>$workID[0],'CustName'=>$custName[0],'User'=>$values['userName'],
+    'APay'=>$values['paidAmt'],'TransID'=>$values['tranID'],'Assoc'=>$assocName[0],
+    'Trans_Type'=>$values['tranType'],'A_PaidDate'=>$paidDate->format('Y-m-d'));
+    
    
    }
    //$chkPaidStatus=\DB::table('initiate_payment')->where('InitPay_ID', $values['payID'])
@@ -729,7 +811,7 @@ public function updateContractorInitPaymentDetails(Request $r)
        $update=\DB::table('initiate_payment')->where('InitPay_ID', $values['payID'])->update(array('PayStatus_ID'=>3));
       
    }
-   $resp=array($update);
+   $resp=array("Success"=>true);
    return $resp;
   
 }
@@ -1755,12 +1837,15 @@ public function getViewWorkSchedule($id, $view)
 }
 public function getPayAmounts($id)
 {
+    $recAmount=\DB::table('received_payments')->where('Work_ID', $id)//->where('PayStatus_ID',1)
+    ->sum('Rec_Amount');
     $InitAmount=\DB::table('initiate_payment')->where('Work_ID', $id)->where('DeleteFlag',0)//->where('PayStatus_ID',1)
     ->sum('ReqAmount');
     $PaidAmount=\DB::table('initiate_payment')->where('Work_ID', $id)->where('DeleteFlag',0)->where('PayStatus_ID',3)
     ->sum('ReqAmount');
     $BalAmount=$InitAmount-$PaidAmount;
-    $resp=array('Init'=>$InitAmount, 'Paid'=>$PaidAmount, 'Balance'=>$BalAmount);
+    $BalInit=$recAmount-$InitAmount;
+    $resp=array('RecAmt'=>$recAmount,'Init'=>$InitAmount, 'Paid'=>$PaidAmount, 'Balance'=>$BalAmount,'BalInit'=>$BalInit);
     return $resp;
 }
 public function getAllSubTotals($id)
@@ -1970,7 +2055,8 @@ public function getAllAssocs()
     ->join('associate', 'associate.Assoc_ID','=','work_tendering.Assoc_ID')
     ->join('address','address.Address_ID','=','associate.Address_ID')
     ->join('contacts','contacts.Contact_ID','=','associate.Contact_ID')
-    ->select('associate.*','address.*','contacts.*')->orderBy('associate.Assoc_FirstName','ASC')->distinct()->get();
+    ->select('associate.*','address.*','contacts.*')->orderBy('associate.Assoc_FirstName','ASC')
+    ->distinct()->get();
     $resp=array($assocs);
     return $resp;
 }
@@ -2350,6 +2436,7 @@ public function generateReport(Request $r)
     $search=collect($values);
    $newArray=[];
     $filterArray=[];
+    $filterArray1=[];
     $finalArray=[];
     $sortArray=[];
     $receipts=\DB::table('received_payments')
@@ -2377,8 +2464,11 @@ public function generateReport(Request $r)
    
     ->where('work_tendering.SelectStatus',1)
     ->where('initiate_payment.DeleteFlag',0)
-    ->select('initiate_payment.Work_ID as Work_ID','AssocPay as Amount','AssocPay_Date AS PayDate','Assoc_Trans_Type as Type','Assoc_Trans_ID as TransNo','sales_customer.Customer_ID','sales_customer.Cust_FirstName','sales_customer.Cust_MidName','sales_customer.Cust_LastName', 'associate.Assoc_FirstName as assoc_FirstName','associate.Assoc_MiddleName','associate.Assoc_LastName as assoc_LastName','associate.Assoc_ID', \DB::raw("'1' as Flag"))
-    ->where('AssocPay_Flag',1)->where('AssocPay', '!=',0)
+    ->select('initiate_payment.Work_ID as Work_ID','Paid_AssocPay as Amount','AssocPay_Date AS PayDate',
+    'Assoc_Trans_Type as Type','Assoc_Trans_ID as TransNo','sales_customer.Customer_ID','sales_customer.Cust_FirstName',
+    'sales_customer.Cust_MidName','sales_customer.Cust_LastName', 'associate.Assoc_FirstName as assoc_FirstName','associate.Assoc_MiddleName','associate.Assoc_LastName as assoc_LastName',
+    'associate.Assoc_ID','Assoc_Comments as Comments', \DB::raw("'1' as Flag"))
+    ->where('AssocPay_Flag',1)->where('initiate_payment.DeleteFlag',0)->where('AssocPay', '!=',0)
     
     ->get();
     $mfee=\DB::table('initiate_payment')
@@ -2389,7 +2479,9 @@ public function generateReport(Request $r)
     ->join('associate', 'associate.Assoc_ID','=','work_tendering.Assoc_ID')
     ->where('initiate_payment.DeleteFlag',0)
     ->where('work_tendering.SelectStatus',1)
-    ->select('initiate_payment.Work_ID as Work_ID','MFee as Amount','M_PaidDate AS PayDate','Trans_Type as Type','Trans_ID as TransNo','sales_customer.Customer_ID','sales_customer.Cust_FirstName','sales_customer.Cust_MidName','sales_customer.Cust_LastName', 'associate.Assoc_FirstName as assoc_FirstName','associate.Assoc_MiddleName','associate.Assoc_LastName as assoc_LastName','associate.Assoc_ID', \DB::raw("'2' as Flag"))
+    ->select('initiate_payment.Work_ID as Work_ID','Paid_MFee as Amount','M_PaidDate AS PayDate',
+    'Trans_Type as Type','Trans_ID as TransNo','sales_customer.Customer_ID','sales_customer.Cust_FirstName','sales_customer.Cust_MidName','sales_customer.Cust_LastName', 'associate.Assoc_FirstName as assoc_FirstName',
+    'associate.Assoc_MiddleName','associate.Assoc_LastName as assoc_LastName','associate.Assoc_ID','MFee_Comments as Comments', \DB::raw("'2' as Flag"))
     
     ->where('MFee_Flag',1)->where('MFee','!=',0)->get();
     if($receipts)
@@ -2420,7 +2512,9 @@ public function generateReport(Request $r)
     ($values['custName'] == null  || ($values['custName'] && $a->Customer_ID==$values['custName'])) &&
     ($values['assocName'] == null  || ($values['assocName']&& $a->Assoc_ID==$values['assocName'] && $a->Flag!=0)) &&
     ($values['startDate'] == null  || ($values['startDate']&& $a->PayDate>=$values['startDate'])) &&
-    ($values['endDate'] == null  || ($values['endDate']&& $a->PayDate<=$values['endDate'])))
+    ($values['endDate'] == null  || ($values['endDate']&& $a->PayDate<=$values['endDate'])) &&
+    ($values['mfee'] == null || ($values['mfee']&& $a->Flag==2))&&
+    ($values['assoc'] == null || ($values['assoc'] && $a->Flag ==1))) 
     {
         array_push($filterArray,$a);
        
@@ -2428,22 +2522,203 @@ public function generateReport(Request $r)
     }
    
   }
- 
+  if($values['startDate'])
+  {
+    foreach($newArray as $a)
+    {
+      if(( $values['workID'] == null || ($values['workID']&& $a->Work_ID==$values['workID'])) &&
+      ($values['custName'] == null  || ($values['custName'] && $a->Customer_ID==$values['custName'])) &&
+      ($values['assocName'] == null  || ($values['assocName']&& $a->Assoc_ID==$values['assocName'] && $a->Flag!=0)) &&
+      ($values['startDate'] == null  || ($values['startDate']&& $a->PayDate<$values['startDate'])) &&
+    
+      ($values['mfee'] == null || ($values['mfee']&& $a->Flag==2))&&
+      ($values['assoc'] == null || ($values['assoc'] && $a->Flag ==1))) 
+      {
+          array_push($filterArray1,$a);
+         
+  
+      }
      
-    
-
-  
-  
-    
-
-$sum=collect($filterArray)->where('Flag',0)->sum('Amount');
+    }
+    $Rec_BeforeStart= collect($filterArray1)->where('Flag',0)->sum('Amount');
+ $assocSum_Open=collect($filterArray1)->where('Flag',1)->sum('Amount');
+ $mfeeSum_Open=collect($filterArray1)->where('Flag',2)->sum('Amount');
+ $paysum_Open=$assocSum_Open+$mfeeSum_Open;
+ $OpenBal=$Rec_BeforeStart - $paysum_Open;
+ $sum=collect($filterArray)->where('Flag',0)->sum('Amount');
 $assocSum=collect($filterArray)->where('Flag',1)->sum('Amount');
 $mfeeSum=collect($filterArray)->where('Flag',2)->sum('Amount');
 $paysum=$assocSum+$mfeeSum;
 $bal=$sum - $paysum;
-$resp=array($filterArray, 'RecSum'=>$sum, 'PaySum'=>$paysum, 'Balance'=>$bal);
+$resp=array($filterArray,'OpenBal'=>$OpenBal,'RecSum'=>$sum, 'PaySum'=>$paysum, 'Balance'=>$bal);
 return $resp;
 
+  }
+  else{
+    $sum=collect($filterArray)->where('Flag',0)->sum('Amount');
+    $assocSum=collect($filterArray)->where('Flag',1)->sum('Amount');
+    $mfeeSum=collect($filterArray)->where('Flag',2)->sum('Amount');
+    $paysum=$assocSum+$mfeeSum;
+    $bal=$sum - $paysum;
+    $resp=array($filterArray,'RecSum'=>$sum, 'PaySum'=>$paysum, 'Balance'=>$bal);
+    return $resp;
+    
+  }
+  
+ 
+ 
+    
+
+
 }
+public function updateTransactionDetails(Request $r)
+{
+    $values = Request::json()->all();
+    $edit=\DB::table('initiate_payment')->where('InitPay_ID', $values['payID'])
+    ->update(array('Paid_MFee'=>$values['mAmt'], 'Trans_Type'=>$values['mType'], 'M_PaidDate'=>$values['mDate'], 'MFee_Comments'=>$values['mComment'],'Trans_ID'=>$values['mTrans'],
+    'Paid_AssocPay'=>$values['assocAmt'], 'Assoc_Trans_Type'=>$values['assocType'], 'AssocPay_Date'=>$values['assocDate'], 'Assoc_Comments'=>$values['assocComment'], 'Assoc_Trans_ID'=>$values['aTrans']));
+    if($edit)
+    {
+        $resp=array('Success'=>true);
+        return $resp;
+    }
+    else{
+        $resp=array('Success'=>false);
+        return $resp;
+    }
+}
+public function chkMFeeExists($id)
+{
+    $MfeeExists=\DB::table('work_timeline')->where('Work_ID',$id)->where('Work_Attrb_ID',40)->pluck('Value');
+    if($MfeeExists[0])
+    {
+        $resp=array('Success'=>true, $MfeeExists[0]);
+        return $resp;
+    }
+    else{
+        $resp=array('Success'=>false, $MfeeExists[0]);
+        return $resp;
+    }
+}
+public function updateWOMFee(Request $r)
+{
+    $values = Request::json()->all();
+    if($values['typeid']==0)
+    {
+        $Mfee=\DB::table('work_timeline')->insert(array('Work_ID'=>$values['workid'],'Work_Attrb_ID'=>40,'Value'=>$values['Mfee']));
+       
+    }
+    else if($values['typeid']==1)
+    {
+        $Mfee=\DB::table('work_timeline')->where('Work_ID',$values['workid'])->where('Work_Attrb_ID',40)->update(array('Value'=>$values['Mfee']));
+      
+    }
+    $resp=array('Success'=>true);
+    return $resp;
+    
+}
+public function getAllReports()
+{
+    $reports=\DB::table('reports')->get();
+    $resp=array($reports);
+    return $resp;
+}
+public function getAllCustBalances()
+{
+    $newArray=[];
+    $newArray1=[];
+    $newArray2=[];
+    $receipts=\DB::table('received_payments')
+    ->join('service_work', 'service_work.Work_ID','=','received_payments.Work_ID')
+    //->leftjoin('initiate_payment', 'service_work.Work_ID','=','initiate_payment.Work_ID')
+     ->join('sales_lead', 'sales_lead.Lead_ID','=','service_work.Lead_ID')
+    ->join('sales_customer', 'sales_customer.Customer_ID','=','sales_lead.Cust_ID') 
+   // ->join('associate', 'associate.Assoc_ID','=','work_tendering.Assoc_ID')
+  // ->join('address','address.Address_ID','=','associate.Address_ID')
+  // ->join('contacts','contacts.Contact_ID','=','associate.Contact_ID')
+   
+    //->where('work_tendering.SelectStatus',1)
+    
+    ->select('sales_customer.Customer_ID',
+\DB::raw('CONCAT(sales_customer.Cust_FirstName," ",sales_customer.Cust_LastName) AS CustName')
+,\DB::raw('SUM(Rec_Amount) as Rec_Amount'))
+    ->groupBy('sales_customer.Customer_ID')
+    ->orderBy('CustName','ASC')
+   
+    ->get();
+    $allpayments=\DB::table('initiate_payment')
+    ->join('service_work', 'service_work.Work_ID','=','initiate_payment.Work_ID')
+    
+     ->join('sales_lead', 'sales_lead.Lead_ID','=','service_work.Lead_ID')
+    ->join('sales_customer', 'sales_customer.Customer_ID','=','sales_lead.Cust_ID') 
+   // ->join('associate', 'associate.Assoc_ID','=','work_tendering.Assoc_ID')
+  // ->join('address','address.Address_ID','=','associate.Address_ID')
+  // ->join('contacts','contacts.Contact_ID','=','associate.Contact_ID')
+   
+    //->where('work_tendering.SelectStatus',1)
+    ->where('initiate_payment.DeleteFlag',0)
+    ->select('sales_customer.Customer_ID',\DB::raw('SUM(ReqAmount) as Pay_Amount'))
+    ->groupBy('sales_customer.Customer_ID')
+    
+   
+    ->get();
+    $paidDetails=\DB::table('initiate_payment')
+    ->join('service_work', 'service_work.Work_ID','=','initiate_payment.Work_ID')
+    
+     ->join('sales_lead', 'sales_lead.Lead_ID','=','service_work.Lead_ID')
+    ->join('sales_customer', 'sales_customer.Customer_ID','=','sales_lead.Cust_ID') 
+ 
+    ->where('initiate_payment.DeleteFlag',0)->where('initiate_payment.PayStatus_ID',3)
+    ->select('sales_customer.Customer_ID',
+\DB::raw('SUM(ReqAmount) as Paid_Amount'))
+    ->groupBy('sales_customer.Customer_ID')
+
+   
+    ->get();
+
+/**/
+foreach($receipts as $rec)
+{
+    foreach($allpayments as $allpay)
+    {
+if($rec->Customer_ID == $allpay->Customer_ID)
+{
+    $rec->Pay_Amount=$allpay->Pay_Amount;
+    array_push($newArray,$rec);
+}
+    }
+    
+}
+foreach($newArray as $a)
+{
+    foreach($paidDetails as $paid)
+    {
+if($a->Customer_ID == $paid->Customer_ID)
+{
+    $a->Paid_Amount=$paid->Paid_Amount;
+    array_push($newArray1,$a);
+}
+    }
+    
+}
+foreach($newArray1 as $a1)
+{
+    $RecAmount=$a1->Rec_Amount;
+    $PayAmount=$a1->Pay_Amount;
+    $PaidAmount=$a1->Paid_Amount;
+  
+    $a1->Pay_Balance= $RecAmount-$PayAmount;
+    $a1->Paid_Balance= $RecAmount-$PaidAmount;
+    array_push($newArray2,$a1->CustName);
+   
+
+    
+}
+    $resp=array('Report'=>$newArray1,'Customers'=>$newArray2);
+    //$resp=array($newArray1);
+
+    return $resp;  
+}
+
 }
   

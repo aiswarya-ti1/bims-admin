@@ -9,6 +9,7 @@ use App\login;
 use App\Roles;
 use App\user_roles;
 use App\user_log_session;
+use App\User;
 use Hash;
 use Illuminate\Support\Facades\Crypt;
 
@@ -19,7 +20,7 @@ class LoginController extends Controller
 		//print('hi');
         $creds=Request::only(['username','password']);
 	$token=auth()->attempt($creds);
-	return response()->json(['token'=>$token]);
+	return response()->json(['token'=>$token, 'Notifications'=>auth()->user()->unreadNotifications,'Count'=>auth()->user()->unreadNotifications->count()]);
     }
 	
     public function login(Request $req)
@@ -183,7 +184,7 @@ public function getBIWSPermissions($typeID)
 public function getHash() //Function to find password in encrypted format only through postman
 	{
 		$logName=Request::json()->all();
-		$hash=Hash::make('assoc');
+		$hash=Hash::make('7994901032');
 		$resp=array($hash);
 		return $resp;
 		
@@ -438,6 +439,14 @@ public function getHash() //Function to find password in encrypted format only t
 		$resp=array('Success'=>true);
 		return $resp;
 	}
+	public function getNotifications($id)
+    {
+      // $user=User::where('id', $id)->get();
+        $notifs=auth()->user()->unreadNotifications();
+        $resp=array($notifs);
+        return $resp;
+
+    }
 }
 
 

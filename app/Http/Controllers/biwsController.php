@@ -7,16 +7,54 @@ use Session;
 use Request;
 use App\login;
 use App\Roles;
+use App\User;
 use App\user_roles;
+use App\LoginUser;
 use App\user_log_session;
 use Hash;
 use Illuminate\Support\Facades\Crypt;
 use DateTime;
 use Illuminate\Support\Facades\Mail;
+
+use Illuminate\Support\Facades\Auth;
+use App\Notifications\NewUserNotification;
+use App\Notifications\NewLeadNotification;
+use App\Notifications\SiteVisitShceduled;
+use App\Notifications\NewUserRegistration;
+use App\Notifications\addLeadDBNotification;
+use App\Notifications\siteVisitScheduledDB;
+use App\Notifications\tenderReceivedDB;
+use App\Notifications\tenderReceivedEmail;
+use App\Notifications\TenderSubmittedDB;
+use App\Notifications\TenderSubmittedEmail;
+use App\Notifications\QuotesReceivedEmail;
+use App\Notifications\QuotesReceivedDB;
+use App\Notifications\PaymentCompletedDB;
+use App\Notifications\RequestAssocVisitDB;
+use App\Notifications\RequestAssocVisitEmail;
+use App\Notifications\CustomerIntrestDB;
+use App\Notifications\CustomerIntrestEmail;
+use App\Notifications\AssocSiteVisitDB;
+use App\Notifications\AssocSiteVisitEmail;
+use App\Notifications\WorkConfirmDB;
+use App\Notifications\WorkConfirmEmail;
+use App\Notifications\SignUpCompletedDB;
+use App\Notifications\SignUpCompletedEmail;
+use App\Notifications\WorkOrderGeneratedEmail;
+use App\Notifications\WorkOrderGeneratedDB;
+
+
+use PDF;
+use Notifiable;
 class biwsController extends Controller
 {
     protected $connection= 'secondsql';
+    protected $notifiables;
     
+    public function __construct()
+    {
+$this->notifiables=array(110);
+    }
     public function biws_CreateToken(Request $r)
     {
         $creds=Request::only(['username','password']);
@@ -54,51 +92,206 @@ if(Hash::check($password, $users[0]))
     }
     public function biws_SignUp(Request $r)
 	{
-        $creds=Request::only(['username','password']);
+        $values = Request::json()->all();
+        $type=$values['user']['first_values']['type'];
+        $custName=$values['user']['second_values']['custName'];
+        $contact=(string)$values['user']['second_values']['contact'];
+        $location=$values['user']['second_values']['loc'];
+        $email=$values['user']['second_values']['email'];
+       $password=$values['pwd'];
+       
+       $pwd=$this->biws_getHash($password);
+
+
+       
+        /*$chkContact=\DB::table('users')->where('username',$contact)->get();
+        $chkEmail=\DB::table('users')->where('email',$email)->get();
+        $countContact=count($chkContact);
+        $countEmail=count($chkEmail);
+        if($countContact==0 && $countEmail==0)
+        {*/
+            $contactID=\DB::table('contacts')->insertGetID(array('Contact_name'=>$custName,'Contact_phone'=>$contact, 'Contact_email'=>$values['user']['second_values']['email']));
+
+           
+
+            $userData=array('User_Name'=>$custName,'username'=>$contact, 'password'=>$pwd, 'Role_ID'=>16, 'email'=>$email);
+            $signUp=\DB::table('users')->insertGetID($userData);
+            $signUp1=\DB::table('logins')->insertGetID($userData);
+            
+            $token=auth()->attempt(['username' =>$contact, 'password' => $values['pwd']]);
+           $customerID=\DB::table('sales_customer')->insertGetID(array('Cust_FirstName'=>$custName, 'Flag'=>1, 'Contact_ID'=>$contactID, 'User_ID'=>$signUp,'PinCode'=>$location));
+            if($type==1)
+            {
+                $plan=$values['user']['first_values']['plan'];
+        $area=$values['user']['first_values']['area'];
+        $floors=$values['user']['first_values']['floor'];
+        $work_Start=$values['user']['first_values']['start'];
+                    $leadID=\DB::table('sales_lead')->insertGetID(array('Cust_ID'=>$customerID,'Lead_StatusID'=>2,'Proj_Details'=>"New Home",'Source_ID'=>8,'Flag'=>2,'Cust_Status_ID'=>1,'PinCode'=>$location));  
+                    if($leadID)
+                {
+                   
+                  //  
+                  
+                  
+                    if($plan)
+                    {
+                        $map_Plan=\DB::table('lead_attrb_value')->insert(array('Lead_ID'=>$leadID,'Attrb_ID'=>1,'Value'=>$plan));
+                    }
+                    if($type)
+                    {
+                        $map_Type=\DB::table('lead_attrb_value')->insert(array('Lead_ID'=>$leadID,'Attrb_ID'=>5,'Value'=>$type));
+                    }
+                    if($area)
+                    {
+                       $map_Area=\DB::table('lead_attrb_value')->insert(array('Lead_ID'=>$leadID,'Attrb_ID'=>3,'Value'=>$area));
+                    }
+                    if($floors)
+                    {
+                        $map_Floor=\DB::table('lead_attrb_value')->insert(array('Lead_ID'=>$leadID,'Attrb_ID'=>4,'Value'=>$floors));
+                    }
+                    if($work_Start)
+                    {
+                        $map_Start=\DB::table('lead_attrb_value')->insert(array('Lead_ID'=>$leadID,'Attrb_ID'=>2,'Value'=>$work_Start));
+                    }
+                }
+                }
+                else{
+                    $category=$values['user']['second_values']['category'];
+                    $catName=\DB::table('enq_category')->where('Enq_Cat_ID',$category)->pluck('Cat_Name');
+                    $leadID=\DB::table('sales_lead')->insertGetID(array('Cust_ID'=>$customerID,'Lead_StatusID'=>2,'Proj_Details'=>$catName[0],'Source_ID'=>8,'Flag'=>2,'Cust_Status_ID'=>1,'PinCode'=>$location));
+                    $mapCat=\DB::table('lead_category')->insert(array('Lead_ID'=>$leadID, 'Cat_ID'=>$category));
+                    
+                }
+                \Notification::route('mail',$email)->notify(new NewUserRegistration());
+            $customer=\DB::table('sales_customer')
+            ->leftjoin('contacts','contacts.Contact_ID','=','sales_customer.Contact_ID')
+            ->join('users','users.username','=','contacts.Contact_phone')
+
+->where('sales_customer.Flag',1)->where('contacts.Contact_phone','=',$contact)
+->select('sales_customer.Customer_ID', 'sales_customer.Cust_FirstName','users.ID','Contact_phone','Contact_email','Role_ID')->get();
+            return response()->json(['token'=>$token,'Success'=>true,'Cust_ID'=>$customer]);
+           /* }
+            
+            else{
+                if($countEmail!=0)
+                {
+                    $resp=array('Success'=>false,'Error'=>'This email is already registered. Please register with a new email.');
+                    return $resp;
+                }
+               else if($countContact!=0)
+                {
+                    $resp=array('Success'=>false,'Error'=>'This number is already registered. Please register with a new number.');
+                    return $resp;
+                }
+            }*/
+            
+        }
+       
+       /* $creds=Request::only(['username','password','email']);
         $username=$creds['username'];
         $password=$creds['password'];
+        $email=$creds['email'];
     
         
         $pwd=$this->biws_getHash($password);
 	
         
-        $signUp=\DB::table('users')->insertGetID(array('username'=>$username, 'password'=>$pwd, 'Role_ID'=>16));
-        $signUp1=\DB::table('logins')->insertGetID(array('username'=>$username, 'password'=>$pwd, 'Role_ID'=>16));
+        //$signUp=\DB::table('users')->insertGetID(array('username'=>$username, 'password'=>$pwd, 'Role_ID'=>16));
+        $userData=array('username'=>$username, 'password'=>$pwd, 'Role_ID'=>16, 'email'=>$email);
+        $signUp=LoginUser::create($userData);
+        $signUp1=\DB::table('logins')->insertGetID(array('username'=>$username, 'password'=>$pwd, 'Role_ID'=>16, 'email'=>$email));
+        
+      // LoginUser::orderBy('ID', 'desc')->first()->notify(new NewUserNotification());
         if($signUp1)
         {
             $token=auth()->attempt($creds);
+           // User::find(1)->notify(new NewUserNotification(auth()->user()));
+           //$notify_users=User::whereIn('id', $this->notifiables)->get();
+           \Notification::route('mail',$email)->notify(new NewUserRegistration());
             $customer=\DB::table('sales_customer')
-            ->join('contacts','contacts.Contact_ID','=','sales_customer.Contact_ID')
+            ->leftjoin('contacts','contacts.Contact_ID','=','sales_customer.Contact_ID')
             ->join('users','users.username','=','contacts.Contact_phone')
 
 ->where('sales_customer.Flag',1)->where('contacts.Contact_phone','=',$username)
-->select('sales_customer.Customer_ID', 'sales_customer.Cust_FirstName','users.ID')->get();
+->select('sales_customer.Customer_ID', 'sales_customer.Cust_FirstName','users.ID','Contact_phone','Contact_email')->get();
             return response()->json(['token'=>$token,'Success'=>true,'Cust_ID'=>$customer]);
         }
+        
 
-    }
+    }*/
     public function biws_AssocSignUp(Request $r)
 	{
-        $creds=Request::only(['username','password']);
+       /* $creds=Request::only(['username','password','email']);
         $username=$creds['username'];
         $password=$creds['password'];
+        $email=$creds['email'];
     
         
         $pwd=$this->biws_getHash($password);
 	
         
-        $signUp=\DB::table('users')->insertGetID(array('username'=>$username, 'password'=>$pwd, 'Role_ID'=>16));
-        $signUp1=\DB::table('logins')->insertGetID(array('username'=>$username, 'password'=>$pwd, 'Role_ID'=>16));
+        $signUp=\DB::table('users')->insertGetID(array('username'=>$username, 'password'=>$pwd, 'Role_ID'=>16,'email'=>$email));
+        $signUp1=\DB::table('logins')->insertGetID(array('username'=>$username, 'password'=>$pwd, 'Role_ID'=>16,'email'=>$email));
         if($signUp1)
         {
             $token=auth()->attempt($creds);
+            \Notification::route('mail',$email)->notify(new NewUserRegistration());
             $assoc=\DB::table('associate')
             ->join('contacts','contacts.Contact_ID','=','associate.Contact_ID')
             ->join('users','users.username','=','contacts.Contact_phone')
             ->where('associate.Online_Flag',1)->where('contacts.Contact_phone','=',$username)
             ->select('associate.Assoc_ID', 'associate.Assoc_FirstName', 'users.ID')->first();
             return response()->json(['token'=>$token,'Success'=>true,'Assoc'=>$assoc]);
-        }
+        }*/
+        $inputs = Request::json()->all();
+        
+        $username=$inputs['user']['first_values']['custName'] ;
+        $contact=$inputs['user']['first_values']['contact'];
+        $email=$inputs['user']['first_values']['email'];
+        //$name=$inputs['name'];
+
+        $password=$inputs['pwd'];
+        $pwd=$this->biws_getHash($password);
+       
+      /* $chkContact=\DB::table('users')->where('username',$contact)->get();
+               $chkEmail=\DB::table('users')->where('email',$email)->get();
+               $countContact=count($chkContact);
+               $countEmail=count($chkEmail);
+               if($countContact==0 && $countEmail==0)
+               {*/
+                   $contactID=\DB::table('contacts')->insertGetID(array('Contact_name'=>$username,'Contact_phone'=>$contact, 'Contact_email'=>$email));
+       
+                  
+       
+                   $userData=array('User_Name'=>$username,'username'=>$contact, 'password'=>$pwd, 'Role_ID'=>11, 'email'=>$email);
+                   $signUp=\DB::table('users')->insertGetID($userData);
+                   $signUp1=\DB::table('logins')->insertGetID($userData);
+                   $newAssocID=\DB::table('associate')->insertGetID(array('Assoc_FirstName'=>$username,'Contact_ID'=>$contactID,'Online_Flag'=>1,'User_ID'=>$signUp));
+                   
+                   $token=auth()->attempt(['username' =>$contact, 'password' => $inputs['pwd']]);
+
+
+      
+            
+            $assoc=\DB::table('associate')->join('contacts','contacts.Contact_ID','=','associate.Contact_ID')
+      ->join('users','users.username','=','contacts.Contact_phone')
+       ->where('associate.Online_Flag',1)->where('contacts.Contact_phone','=',$contact)
+       ->select('associate.Assoc_ID', 'associate.Assoc_FirstName','associate.Assoc_MiddleName','associate.Assoc_LastName', 'users.Role_ID')->first();
+       return response()->json(['token'=>$token,'Success'=>true,'Assoc'=>$assoc]); 
+           
+      /*  }
+        else{
+            if($countEmail!=0)
+            {
+                $resp=array('Success'=>false,'Error'=>'This email is already registered. Please register with a new email.');
+                return $resp;
+            }
+           else if($countContact!=0)
+            {
+                $resp=array('Success'=>false,'Error'=>'This number is already registered. Please register with a new number.');
+                return $resp;
+            }
+        }*/
 
 
     }
@@ -186,7 +379,7 @@ if(Hash::check($password, $users[0]))
        ->join('users','users.username','=','contacts.Contact_phone')
        
 ->where('sales_customer.Flag',1)->where('contacts.Contact_phone','=',$username)
-->select('sales_customer.Customer_ID', 'sales_customer.Cust_FirstName','users.ID')->get();
+->select('sales_customer.Customer_ID', 'sales_customer.Cust_FirstName','users.ID', 'Contact_phone','email', 'Role_ID')->get();
       return response()->json(['token'=>$token,'Success'=>true,'Cust_ID'=>$customer]); 
    }
    else
@@ -203,38 +396,43 @@ if(Hash::check($password, $users[0]))
     public function biws_addLead(Request $r)
     {
         $values = Request::json()->all();
-     $type=$values['type'];
-        $plan=$values['plan'];
-        $area=$values['area'];
-        $floors=$values['floor'];
-        $work_Start=$values['start'];
-        $category=$values['category'];
-        $catName=\DB::table('enq_category')->where('Enq_Cat_ID',$category)->pluck('Cat_Name');
-        $custName=$values['custName'];
-        $contact=(string)$values['contact'];
-        $location=$values['loc'];
+        
+     $type=$values['first_values']['type'];
+        $custName=$values['second_values']['custName'];
+        $contact=(string)$values['second_values']['contact'];
+        $location=$values['second_values']['loc'];
         $chkContact=\DB::table('sales_customer')->join('contacts','contacts.Contact_ID','=','sales_customer.Contact_ID')
         ->where('sales_customer.Flag',1)->where('Contact_phone',$contact)->get();
-        $count=count($chkContact);
-        if($count==0)
+        $chkEmail=\DB::table('sales_customer')->join('contacts','contacts.Contact_ID','=','sales_customer.Contact_ID')
+        ->where('sales_customer.Flag',1)->where('Contact_email',$values['second_values']['email'])->get();
+        $countContact=count($chkContact);
+        $countEmail=count($chkEmail);
+        if($countContact==0 && $countEmail==0)
         {
-        $contactID=\DB::table('contacts')->insertGetID(array('Contact_name'=>$custName,'Contact_phone'=>$contact));
+        $contactID=\DB::table('contacts')->insertGetID(array('Contact_name'=>$custName,'Contact_phone'=>$contact, 'Contact_email'=>$values['second_values']['email']));
         if($contactID)
         {
-            $customerID=\DB::table('sales_customer')->insertGetID(array('Cust_FirstName'=>$custName,'Loc_ID'=>$location, 'Flag'=>1, 'Contact_ID'=>$contactID));
+            $customerID=\DB::table('sales_customer')->insertGetID(array('Cust_FirstName'=>$custName, 'Flag'=>1, 'Contact_ID'=>$contactID));
             if($customerID)
             {
                 if($type==1)
                 {
-                    $leadID=\DB::table('sales_lead')->insertGetID(array('Cust_ID'=>$customerID,'Lead_StatusID'=>2,'Proj_Details'=>"New Home",'Source_ID'=>8,'Flag'=>2,'Cust_Status_ID'=>1));  
-                }
-                else{
-                    $leadID=\DB::table('sales_lead')->insertGetID(array('Cust_ID'=>$customerID,'Lead_StatusID'=>2,'Proj_Details'=>$catName[0],'Source_ID'=>8,'Flag'=>2,'Cust_Status_ID'=>1));
-                }
-               
-                if($leadID)
+        $plan=$values['first_values']['plan'];
+        $area=$values['first_values']['area'];
+        $floors=$values['first_values']['floor'];
+        $work_Start=$values['first_values']['start'];
+        $leadID=\DB::table('sales_lead')->insertGetID(array('Cust_ID'=>$customerID,'Lead_StatusID'=>2,'Proj_Details'=>"New Home",'Source_ID'=>8,'Flag'=>2,'Cust_Status_ID'=>1,'PinCode'=>$location));  
+                    if($leadID)
                 {
-                    $mapCat=\DB::table('lead_category')->insert(array('Lead_ID'=>$leadID, 'Cat_ID'=>$category));
+                    $notify_users=User::whereIn('id', $this->notifiables)->get();
+                   foreach($notify_users as $user)
+                   {
+                    \Notification::route('mail', $user->email)->notify(new NewLeadNotification($custName));
+                    \Notification::send($user,new addLeadDBNotification($custName));
+                   }
+                  //  
+                  
+                  
                     if($plan)
                     {
                         $map_Plan=\DB::table('lead_attrb_value')->insert(array('Lead_ID'=>$leadID,'Attrb_ID'=>1,'Value'=>$plan));
@@ -256,14 +454,55 @@ if(Hash::check($password, $users[0]))
                         $map_Start=\DB::table('lead_attrb_value')->insert(array('Lead_ID'=>$leadID,'Attrb_ID'=>2,'Value'=>$work_Start));
                     }
                 }
+                }
+                else{
+                    $category=$values['second_values']['category'];
+                    $catName=\DB::table('enq_category')->where('Enq_Cat_ID',$category)->pluck('Cat_Name');
+                    $leadID=\DB::table('sales_lead')->insertGetID(array('Cust_ID'=>$customerID,'Lead_StatusID'=>2,'Proj_Details'=>$catName[0],'Source_ID'=>8,'Flag'=>2,'Cust_Status_ID'=>1,'PinCode'=>$location));
+                    $mapCat=\DB::table('lead_category')->insert(array('Lead_ID'=>$leadID, 'Cat_ID'=>$category));
+                    if($leadID)
+                {
+                    $notify_users=User::whereIn('id', $this->notifiables)->get();
+                    foreach($notify_users as $user)
+                    {
+                     \Notification::route('mail', $user->email)->notify(new NewLeadNotification($custName));
+                     \Notification::send($user,new addLeadDBNotification($custName));
+                    }
+                   
+                   
+                }
+                }
+               
+                
             }
         }
-        $resp=array('Success'=>true);
+       
+        
+       /* $data = array('workID'=>20);
+        \Mail::send('welcome',$data,function($message)
+             {
+                 $message->from('noreply.ipl2020@gmail.com','Wisebrix');
+                 $message->to('emm@inframall.net');
+                 $message->to('ti1@inframall.net');
+                // $message->to('vkv@inframall.net');
+                //$message->to('ti1@inframall.net');
+                 $message->subject('Welcome to Wisebrix');
+             }) ;*/
+       $resp=array('Success'=>true);
         return $resp;
     }
     else{
-        $resp=array('Success'=>false);
-        return $resp;
+        if($countEmail!=0)
+        {
+            $resp=array('Success'=>false,'Error'=>'This email is already registered. Please register with a new email.');
+            return $resp;
+        }
+       else if($countContact!=0)
+        {
+            $resp=array('Success'=>false,'Error'=>'This number is already registered. Please register with a new number.');
+            return $resp;
+        }
+       
     }
     
         
@@ -273,11 +512,11 @@ if(Hash::check($password, $users[0]))
     public function biws_getAllLeads()
     {
         $leads=\DB::table('sales_lead')
-         ->join('sales_customer','sales_customer.Customer_ID','=','sales_lead.Cust_ID')
+         ->leftjoin('sales_customer','sales_customer.Customer_ID','=','sales_lead.Cust_ID')
         
-        ->join('location', 'location.Loc_ID','=','sales_customer.Loc_ID')
-        ->join('customer_status','customer_status.Cust_Status_ID','=','sales_lead.Cust_Status_ID')
-      ->join('lead_status','lead_status.Lead_Status_ID','=','sales_lead.Lead_StatusID')
+        ->leftjoin('location', 'location.Loc_ID','=','sales_customer.Loc_ID')
+        ->leftjoin('customer_status','customer_status.Cust_Status_ID','=','sales_lead.Cust_Status_ID')
+      ->leftjoin('lead_status','lead_status.Lead_Status_ID','=','sales_lead.Lead_StatusID')
         ->where('sales_lead.Flag',2)->where('sales_lead.DeleteFlag',0)
         ->orderBy('sales_lead.Lead_ID','desc')->get();
         $resp=array($leads);
@@ -285,28 +524,80 @@ if(Hash::check($password, $users[0]))
     }
     public function biws_AllLeadsByCust($id)
     {
+        /*$leads=\DB::table('sales_lead')
+        ->leftjoin('service_work','service_work.Lead_ID','=','sales_lead.Lead_ID')
         
+        ->join('sales_customer','sales_customer.Customer_ID','=','sales_lead.Cust_ID')
+        //->leftjoin('customer_status','customer_status.Cust_Status_ID','=','service_work.Cust_Status_ID')
+        //->leftjoin('location', 'location.Loc_ID','=','sales_customer.Loc_ID')
+        ->where('sales_lead.Flag',2)->where('sales_lead.DeleteFlag',0)->where('sales_lead.Cust_ID',$id)
+      
+        //->select('service_work.Cust_Status_ID')
+        ->get();
+        $newArray1=[];
+        $newArray2=[];
+        $newArray=[];
+        foreach($leads as $lead)
+        {
+            if($lead->Cust_Status_ID==null)
+            {
+                $leadData=\DB::table('sales_lead')
+               // ->leftjoin('service_work','service_work.Lead_ID','=','sales_lead.Lead_ID')
+                
+                ->join('sales_customer','sales_customer.Customer_ID','=','sales_lead.Cust_ID')
+                //->leftjoin('customer_status','customer_status.Cust_Status_ID','=','service_work.Cust_Status_ID')
+                ->leftjoin('location', 'location.Loc_ID','=','sales_customer.Loc_ID')
+                ->where('sales_lead.Flag',2)->where('sales_lead.DeleteFlag',0)->where('sales_lead.Cust_ID',$id)
+              
+                ->select('sales_lead.Lead_ID','Cust_ID','Lead_StatusID','Cust_FirstName','Cust_MidName','Cust_LastName',
+                'Loc_Name','PinCode AS Loc_Name','Proj_Details AS WorkDetail',\DB::raw('"Enquiry Received" AS Cust_Status_Name') )->get();
+                array_push($newArray1,$leadData);
+            }
+            else 
+            {
+                $workData=\DB::table('sales_lead')
+               ->leftjoin('service_work','service_work.Lead_ID','=','sales_lead.Lead_ID')
+                
+                ->join('sales_customer','sales_customer.Customer_ID','=','sales_lead.Cust_ID')
+                ->leftjoin('customer_status','customer_status.Cust_Status_ID','=','service_work.Cust_Status_ID')
+                ->leftjoin('location', 'location.Loc_ID','=','sales_customer.Loc_ID')
+                ->where('sales_lead.Flag',2)->where('sales_lead.DeleteFlag',0)->where('sales_lead.Cust_ID',$id)
+              
+                ->select('sales_lead.Lead_ID','Cust_ID','Lead_StatusID','service_work.Cust_Status_ID','Cust_ID','service_work.Work_ID',
+                'WorkSpec','Work_Type','Cust_FirstName','Cust_MidName','Cust_LastName','DeleteFlag','Site_Analysis_Date','WorkStatus',
+                'ActualSite_Analysis_Date','SiteAnalysis_Flag','Loc_Name','WorkDetail', 'Cust_Status_Name')->get();
+                array_push($newArray2,$workData);
+            }
+           
+        }
+    array_merge($newArray1,$newArray2);
+        
+        $resp=array($newArray1);
+        return $resp;*/
 
-    $leads=\DB::table('sales_lead')
+
+    /*$leads=\DB::table('sales_lead')
     ->leftjoin('service_work','service_work.Lead_ID','=','sales_lead.Lead_ID')
     
     ->join('sales_customer','sales_customer.Customer_ID','=','sales_lead.Cust_ID')
     ->leftjoin('customer_status','customer_status.Cust_Status_ID','=','service_work.Cust_Status_ID')
-    ->join('location', 'location.Loc_ID','=','sales_customer.Loc_ID')
+    ->leftjoin('location', 'location.Loc_ID','=','sales_customer.Loc_ID')
     ->where('sales_lead.Flag',2)->where('sales_lead.DeleteFlag',0)->where('sales_lead.Cust_ID',$id)
   
     ->select('sales_lead.Lead_ID','Cust_ID','Lead_StatusID','service_work.Cust_Status_ID','Cust_ID','service_work.Work_ID',
     'WorkSpec','Work_Type','Cust_FirstName','Cust_MidName','Cust_LastName','DeleteFlag','Site_Analysis_Date','WorkStatus',
-    'ActualSite_Analysis_Date','SiteAnalysis_Flag','Loc_Name',
+    'ActualSite_Analysis_Date','SiteAnalysis_Flag','Loc_Name','PinCode',
     \DB::raw('(CASE WHEN service_work.Cust_Status_ID>=1 THEN service_work.WorkDetail ELSE Proj_Details END) AS WorkDetail'),
-    \DB::raw('(CASE WHEN service_work.Cust_Status_ID>=1 THEN customer_status.Cust_Status_Name ELSE "Enquiry Received" END) AS Cust_Status_Name'))
+    \DB::raw('(CASE WHEN service_work.Cust_Status_ID>=1 THEN customer_status.Cust_Status_Name ELSE "Enquiry Received" END) AS Cust_Status_Name'),
+    \DB::raw('(CASE WHEN service_work.Cust_Status_ID>=1 THEN Loc_Name ELSE PinCode END) AS Loc_Name'))
        // 'Proj_Details AS WorkDetail','1 AS Cust_Status_ID','Enquiry Received AS Cust_Status_Name')
     ->get();
     
     
 
 $resp=array($leads);
-        return $resp;
+        return $resp;*/
+
 
    
 
@@ -325,6 +616,51 @@ $resp=array($leads);
         //$resp=array($leads);
         //return $resp;
         return $leads->Work_ID;*/
+        
+$leads=\DB::table('sales_lead')
+->leftjoin('service_work','service_work.Lead_ID','=','sales_lead.Lead_ID')
+//->leftjoin('work_tendering','work_tendering.Work_ID','=','service_work.Work_ID')
+->join('sales_customer','sales_customer.Customer_ID','=','sales_lead.Cust_ID')
+->leftjoin('customer_status','customer_status.Cust_Status_ID','=','service_work.Cust_Status_ID')
+->leftjoin('location', 'location.Loc_ID','=','sales_customer.Loc_ID')
+->where('sales_lead.Flag',2)->where('sales_lead.DeleteFlag',0)->where('sales_lead.Cust_ID',$id)
+
+->select('sales_lead.Lead_ID','Cust_ID','Lead_StatusID','service_work.Cust_Status_ID','Cust_ID','service_work.Work_ID',
+'WorkSpec','Work_Type','Cust_FirstName','Cust_MidName','Cust_LastName','DeleteFlag','Site_Analysis_Date','WorkStatus',
+'ActualSite_Analysis_Date','SiteAnalysis_Flag','Loc_Name','sales_customer.PinCode','WorkDetail','Proj_Details','Cust_Status_Name')->get();
+
+foreach($leads as $lead)
+{
+if($lead->Cust_Status_ID == null)
+{
+    $lead->Cust_Status_Name='Enquiry Received';
+    $lead->WorkDetail=$lead->Proj_Details;
+   $lead->Loc_Name=$lead->PinCode;
+   
+}
+/*if($lead->Cust_Status_ID ==12)
+{
+$woSignUpStatus=\DB::table('work_tendering')->where('Work_ID',$lead->Work_ID)->where('SelectStatus',1)->select('Assoc_WOSignUp_Flag','Cust_WOSignUp_Flag')->get();
+if($woSignUpStatus->Cust_WOSignUp_Flag ==1 && $woSignUpStatus->Assoc_WOSignUp_Flag==0)
+{
+    $lead->Cust_Status_Name='Contractor Signup Pending';
+}
+
+else
+{
+    $lead->Cust_Status_Name=$lead->Cust_Status_Name;
+}
+}*/
+else{
+$lead->Cust_Status_Name=$lead->Cust_Status_Name;
+$lead->WorkDetail=$lead->WorkDetail;
+$lead->Loc_Name=$lead->Loc_Name;
+
+}
+}
+
+$resp=array($leads);
+return $resp;
     }
     public function biws_getWorkTenderDetails($id)
     {
@@ -333,6 +669,7 @@ $resp=array($leads);
         ->leftjoin('work_tendering','work_tendering.Work_ID','=','service_work.Work_ID')
         ->where('work_tendering.ReqSiteVisit_Flag',1)
         ->where('sales_lead.Flag',2)->where('sales_lead.Cust_ID',$id)
+        ->select('service_work.Work_ID','Sch_Site_Visit','Act_Site_Visit', 'sales_lead.Lead_ID')
        
         //->
         ->get();
@@ -350,7 +687,7 @@ $resp=array($leads);
     $customer=\DB::table('sales_customer')
     ->join('contacts','contacts.Contact_ID','=','sales_customer.Contact_ID')
         ->where('sales_customer.Flag',1)->where('contacts.Contact_phone',$user)
-        ->select('sales_customer.Customer_ID', 'sales_customer.Cust_FirstName')->get();
+        ->select('sales_customer.Customer_ID', 'sales_customer.Cust_FirstName', 'contacts.Contact_email')->get();
         $resp=array($customer);
         return $resp;
 
@@ -361,7 +698,7 @@ $resp=array($leads);
     ->join('contacts','contacts.Contact_ID','=','associate.Contact_ID')
         //->where('associate.Online_Flag',1)
         ->where('contacts.Contact_phone',$user)
-        ->select('associate.Assoc_ID', 'associate.Assoc_FirstName')->get();
+        ->select('associate.Assoc_ID', 'associate.Assoc_FirstName','Contact_email')->get();
         $resp=array($Assoc);
         return $resp;
 
@@ -373,7 +710,7 @@ $resp=array($leads);
         $contact=$inputs['contact'];
         $email=$inputs['email'];
         $name=$inputs['name'];
-        $contactID=\DB::table('contacts')->insertGetID(array('Contact_phone'=>$username,'Contact_name'=>$contact));
+        $contactID=\DB::table('contacts')->insertGetID(array('Contact_phone'=>$username,'Contact_name'=>$contact, 'Contact_email'=>$email));
         $addrID=\DB::table('address')->insertGetID(array('Address_email'=>$email));
         if($contactID)
         {
@@ -432,8 +769,9 @@ $resp=array($leads);
    if($token)
    {
       $assoc=\DB::table('associate')->join('contacts','contacts.Contact_ID','=','associate.Contact_ID')
+      ->join('users','users.username','=','contacts.Contact_phone')
        ->where('associate.Online_Flag',1)->where('contacts.Contact_phone','=',$username)
-       ->select('associate.Assoc_ID', 'associate.Assoc_FirstName')->first();
+       ->select('associate.Assoc_ID', 'associate.Assoc_FirstName','associate.Assoc_MiddleName','associate.Assoc_LastName', 'users.Role_ID')->first();
        return response()->json(['token'=>$token,'Success'=>true,'Assoc'=>$assoc]); 
    }
    else
@@ -445,12 +783,12 @@ $resp=array($leads);
     public function biws_AllWorks()
     {
         $works=\DB::table('service_work')
-        ->join ('sales_lead', 'sales_lead.Lead_ID','=','service_work.Lead_ID')
-         ->join('sales_customer','sales_customer.Customer_ID','=','sales_lead.Cust_ID')
+        ->leftjoin ('sales_lead', 'sales_lead.Lead_ID','=','service_work.Lead_ID')
+         ->leftjoin('sales_customer','sales_customer.Customer_ID','=','sales_lead.Cust_ID')
         
-        ->join('location', 'location.Loc_ID','=','sales_customer.Loc_ID')
-        ->join('customer_status','customer_status.Cust_Status_ID','=','sales_lead.Cust_Status_ID')
-        ->join('work_status', 'work_status.Work_Status_ID','=','service_work.WorkStatus')
+        ->leftjoin('location', 'location.Loc_ID','=','sales_customer.Loc_ID')
+        ->leftjoin('customer_status','customer_status.Cust_Status_ID','=','sales_lead.Cust_Status_ID')
+        ->leftjoin('work_status', 'work_status.Work_Status_ID','=','service_work.WorkStatus')
         ->where('sales_lead.Flag',2)->where('sales_lead.DeleteFlag',0)
         ->orderBy('service_work.Work_ID','desc')->get();
         $resp=array($works);
@@ -484,7 +822,8 @@ $resp=array($leads);
             $service_list= $values['seg'];
             
 	
-	$comma_separated = implode(",", $values['seg']);
+    $comma_separated = implode(",", $values['seg']);
+    $CustID=\DB::table('sales_lead')->where('Lead_ID',$values['lead_ID'])->pluck('Cust_ID');
             
            
                 $lastWorkID=\DB::table('service_work')->where('Work_ID','<',10000)->orWhere('Work_ID','>',20000)->orderBy('Work_ID','DESC')->first();
@@ -494,7 +833,7 @@ $resp=array($leads);
             {
                 $work=\DB::table('service_work')->insert(array('Work_ID'=>(int)$insertID,'Lead_ID'=>$values['lead'],'Status_ID' => 2,'WorkStatus'=>2,
                 'Segment_ID' => $values['ser'], 'Service_ID' => $comma_separated,
-                'Category' => $values['category'],
+                'Category' => $values['category'],'Work_Type'=>$values['worktype'],
                 'WorkDetail' => $values['workDetails'], 'WorkSpec' => $values['workSpec'], 'Comments'=> $values['workcomments'], 'Assigned_To'=>'PMQA', 'AssignedDept'=>'PMQA', 'RemoveFlag'=>1,'Cust_Status_ID'=>1));
                 
                 if(!empty($work))
@@ -504,7 +843,8 @@ $resp=array($leads);
                     $access=\DB::table('work_access_table')->insert(array('Work_ID'=> (int)$insertID , 'PMQA'=>'PMQA'));
                     $work_create_date=\DB::table('work_timeline')->insert(array('Work_ID'=>(int)$insertID, 'Work_Attrb_ID'=>13, 'Value'=>$today));
                     $work_limit=\DB::table('work_timeline')->insert(array('Work_ID'=>(int)$insertID, 'Work_Attrb_ID'=>38, 'Value'=>1));
-    $updateLead=\DB::table('sales_lead')->where('Lead_ID',$values['lead'])->update(array('Lead_StatusID'=>3));
+    $updateLead=\DB::table('sales_lead')->where('Lead_ID',$values['lead'])->update(array('Lead_StatusID'=>3, 'Loc_ID'=>$values['loc']));
+    $updateLoc=\DB::table('sales_customer')->where('Customer_ID',$CustID[0])->update(array('Loc_ID'=>$values['loc']));
                     
                 }
             }
@@ -512,7 +852,7 @@ $resp=array($leads);
             {
                 $work=\DB::table('service_work')->insert(array('Work_ID'=>(int)$insertID,'Lead_ID'=>$values['lead_ID'],'Status_ID' => 2,'WorkStatus'=>1,
                 'Segment_ID' => $values['ser'], 'Service_ID' => $comma_separated,
-                'Category' => $values['category'],
+                'Category' => $values['category'],'Work_Type'=>$values['worktype'],
                 'WorkDetail' => $values['workDetails'], 'WorkSpec' => $values['workSpec'], 'Comments'=> $values['workcomments'], 'Assigned_To'=>'PMQA', 'AssignedDept'=>'PMQA', 'RemoveFlag'=>1,'Cust_Status_ID'=>1));
                 
               
@@ -534,7 +874,7 @@ $resp=array($leads);
                     } 
                 }
                 $updateLead=\DB::table('sales_lead')->where('Lead_ID',$values['lead_ID'])->update(array('Lead_StatusID'=>3));
-       
+                $updateLoc=\DB::table('sales_customer')->where('Customer_ID',$CustID[0])->update(array('Loc_ID'=>$values['loc']));
             }
 
             /*$email=\Mail::send('email',['data'=>$values],function($message)
@@ -583,21 +923,49 @@ return $resp;
         $expAssocVisit->modify('+1 day');
         $actAssocVisit->modify('+1 day');
         $leadID=\DB::table('service_work')->where('Work_ID',$values['work'])->pluck('Lead_ID');
+        $notify_user_id=\DB::table('sales_customer')->join('sales_lead','sales_lead.Cust_ID','=','sales_customer.Customer_ID')
+       // ->join('contacts','contacts.Contact_ID','=','sales_customer.Contact_ID')
+        ->join('users','users.id','=','sales_customer.User_ID')->where('sales_lead.Lead_ID',$leadID[0])
+        ->select('id')->first();
+        $notify_user=User::where('id', $notify_user_id->id)->get();
         $tid=\DB::table('work_tendering')->where('Work_ID',$values['work'])->where('ReqSiteVisit_Flag',1)->pluck('WorkTender_ID');
         if($values['typeID']==1)
         {
             $updateWork=\DB::table('service_work')->where('Work_ID',$values['work'])->update(array('Site_Analysis_Date'=>$expSiteDate->format('Y-m-d'),'WorkStatus'=>2,'Cust_Status_ID'=>2));
+           
+  //  LoginUser::find(1)->notify(new SiteVisitShceduled());
+ 
+    foreach($notify_user as $user)
+    {
+        \Notification::send($user,new siteVisitScheduledDB($expSiteDate->modify('+1 day')));
+\Notification::route('mail',$user['email'])->notify(new SiteVisitShceduled($expSiteDate->modify('+1 day')));
+    }
+  
+  
             //$updateLead=\DB::table('sales_lead')->where('Lead_ID',$leadID[0])->update(array());
         }
         else if($values['typeID']==2)
         {
-            $updateWork=\DB::table('service_work')->where('Work_ID',$values['work'])->update(array('ActualSite_Analysis_Date'=>$actSiteDate->format('Y-m-d'),'WorkStatus'=>10, 'SiteAnalysis_Flag'=>1,'Cust_Status_ID'=>3));
+            $updateWork=\DB::table('service_work')->where('Work_ID',$values['work'])->update(array('ActualSite_Analysis_Date'=>$actSiteDate->format('Y-m-d'),'WorkStatus'=>10, 'SiteAnalysis_Flag'=>1,'Cust_Status_ID'=>4));
+           // User::find(1)->notify(new SiteVisitShceduled());
             //$updateLead=\DB::table('sales_lead')->where('Lead_ID',$leadID[0])->update(array());
         }
         else if($values['typeID']==3)
         {
 $updateTender=\DB::table('work_tendering')->where('WorkTender_ID',$tid[0])->update(array('Sch_Site_Visit'=>$expAssocVisit->format('Y-m-d'),'Assoc_Status'=>5));
 $updateWork=\DB::table('service_work')->where('Work_ID',$values['work'])->update(array('WorkStatus'=>18,'Cust_Status_ID'=>9));
+
+//Customer Notification
+$notify_user_id=\DB::table('sales_customer')->join('sales_lead','sales_lead.Cust_ID','=','sales_customer.Customer_ID')
+->join('contacts','contacts.Contact_ID','=','sales_customer.Contact_ID')
+->join('users','users.username','=','contacts.Contact_phone')->where('sales_lead.Lead_ID',$leadID[0])
+->select('id')->first();
+$notify_user=User::where('id', $notify_user_id->id)->get();
+                    foreach($notify_user as $user)
+                    {
+            \Notification::send($user,new AssocSiteVisitDB($expAssocVisit->format('Y-m-d')));
+            \Notification::route('mail',$user['email'])->notify(new AssocSiteVisitEmail($expAssocVisit->format('Y-m-d')));
+                    }
             //$updateLead=\DB::table('sales_lead')->where('Lead_ID',$leadID[0])->update(array());
         }
         else if($values['typeID']==4)
@@ -606,7 +974,7 @@ $updateWork=\DB::table('service_work')->where('Work_ID',$values['work'])->update
             $updateWork=\DB::table('service_work')->where('Work_ID',$values['work'])->update(array('WorkStatus'=>6,'Cust_Status_ID'=>10));
             //$updateLead=\DB::table('sales_lead')->where('Lead_ID',$leadID[0])->update(array());
         }
-        $resp=array('Success'=>true);
+        $resp=array('Success'=>true, 'User'=>LoginUser::find(1));
         return $resp;
         
     }
@@ -616,9 +984,9 @@ $updateWork=\DB::table('service_work')->where('Work_ID',$values['work'])->update
          $oneWork=\DB::table('service_work')
          ->leftjoin('segment','segment.Segment_ID','=','service_work.Segment_ID')
          ->leftjoin('services','services.Service_ID','=','service_work.Service_ID')
-         //->join('work_color_status', 'work_color_status.Color_StatusID','=','service_work.Generate_Work_Status')
+         //left->join('work_color_status', 'work_color_status.Color_StatusID','=','service_work.Generate_Work_Status')
          ->join ('sales_lead', 'sales_lead.Lead_ID','=','service_work.Lead_ID')
-         ->join('sales_customer','sales_customer.Customer_ID','=','sales_lead.Cust_ID')
+         ->leftjoin('sales_customer','sales_customer.Customer_ID','=','sales_lead.Cust_ID')
          ->leftjoin('address', 'address.Address_ID','=','sales_customer.Address_ID')
          ->leftjoin('contacts','contacts.Contact_ID','=','sales_customer.Contact_ID')
          ->leftjoin('location','location.Loc_ID','=','sales_lead.Lead_LocID')
@@ -667,7 +1035,7 @@ if($data['param3']==0)
 	if($count==0)
 	{
         $leadID=\DB::table('service_work')->where('Work_ID',$data['param1'])->pluck('Lead_ID');
-        $updateWork=\DB::table('service_work')->where('Work_ID',$data['param1'])->update(array('Cust_Status_ID'=>4));
+       // $updateWork=\DB::table('service_work')->where('Work_ID',$data['param1'])->update(array('Cust_Status_ID'=>4));
 		//$updateLead=\DB::table('sales_lead')->where('Lead_ID',$leadID[0])->update(array('Cust_Status_ID'=>4));
 	}
 	$item=\DB::table('work_labour_estimation')->insert(array('Work_ID'=>$data['param1'], 
@@ -720,7 +1088,7 @@ public function biws_changeStatusEst($id)
 	$estimateDate=\DB::table('work_timeline')->insert(array('Work_ID'=>$id, 'Work_Attrb_ID'=>16, 'Value'=>$today));
 	$assignee=\DB::table('service_work')->where('Work_ID', $id)->pluck('Assigned_To');
 	$status=\DB::table('service_work')->where('Work_ID', $id)
-	->update(array('AssignedDept'=> 'BI', 'Assigned_To'=>'BID', 'WorkStatus'=>'3', 'Update_Status'=>2,'Est_Flag'=>1,'Cust_Status_ID'=>5));
+	->update(array('AssignedDept'=> 'BI', 'Assigned_To'=>'BID', 'WorkStatus'=>'3', 'Update_Status'=>2,'Est_Flag'=>1,'Cust_Status_ID'=>6));
 	/*$leadID=\DB::table('service_work')->where('Work_ID',$id)->pluck('Lead_ID');
 		$updateLead=\DB::table('sales_lead')->where('Lead_ID',$leadID[0])->update(array());*/
 	if(!empty($assignee))
@@ -909,7 +1277,24 @@ $leadID=\DB::table('service_work')->where('Work_ID',$id)->pluck('Lead_ID');
 			$changeWorkFlag=\DB::table('service_work')->where('Work_ID',$id)
             ->update(array('AssocSelectFlag'=>2,'Cust_Status_ID'=>6));
             //$updateLead=\DB::table('sales_lead')->where('Lead_ID',$leadID[0])->update(array());
-
+            //Notification
+            
+        $online_assocs=\DB::table('work_tendering')->where('Work_ID',$id)->where('Online_Flag',1)
+        ->select('Assoc_ID')->get();
+               
+                foreach($online_assocs as $assoc)
+                    {
+                        $assoc_user_id=\DB::table('associate')->join('contacts','contacts.Contact_ID','=','associate.Contact_ID')->join('users','users.username','=','contacts.Contact_phone')
+                        ->where('associate.Assoc_ID',$assoc->Assoc_ID)->select('users.id')->first();
+                        $notify_user=User::where('id', $assoc_user_id->id)->get();
+                        foreach($notify_user as $user)
+                    {
+                       
+                        \Notification::send($user,new QuotesReceivedDB());
+                \Notification::route('mail',$user['email'])->notify(new QuotesReceivedEmail());
+                    }
+                    }
+            
 		
 		$resp=array("Success"=>true);
 		return $resp;
@@ -1264,11 +1649,11 @@ public function biws_getAllOnlineAssocs($id)
     $resp=array($onAssoc);
     return $resp;
 }
-public function biws_getOnlineAssocs()
+public function biws_getOnlineAssocs($id)
 {
-   /* $t_assocs=\DB::table('work_tendering')->where('work_tendering.Work_ID', $id)
+    $t_assocs=\DB::table('work_tendering')->where('work_tendering.Work_ID', $id)
     ->join('associate', 'associate.Assoc_ID','=','work_tendering.Assoc_ID')
-    ->where('work_tendering.TenderFinish_Flag',1)->select('work_tendering.Assoc_ID')->get();*/
+    ->where('work_tendering.TenderFinish_Flag',1)->select('work_tendering.Assoc_ID')->get();
     //->where('work_tendering.updateFlag',1)
 	
     $onlineAssoc=\DB::table('associate')
@@ -1277,7 +1662,7 @@ public function biws_getOnlineAssocs()
     ->leftjoin('location', 'location.Loc_ID','=','associate_details.Loc_ID')
     //->where('Assoc_Status','4')
     ->where('associate.Online_Flag',1)->get();
-    /*$newArray=[];
+    $newArray=[];
     $finalArray=[];
     foreach($t_assocs as $t_assoc){
         foreach($onlineAssoc as $o_assoc)
@@ -1295,7 +1680,7 @@ public function biws_getOnlineAssocs()
         }
        
 
-    }*/
+    }
     
     $resp=array($onlineAssoc);
     return $resp;
@@ -1383,7 +1768,9 @@ public function biws_AssocWorks($associd)
         ->leftjoin('assoc_tender_status','assoc_tender_status.Tender_Status_ID','=','work_tendering.Assoc_Status')
     ->where('work_tendering.Assoc_ID', $associd)->where('associate.Online_Flag',1)
     ->where('sales_lead.Flag',2)
-    ->where('work_tendering.DeleteFlag',0)->get();
+    ->where('work_tendering.DeleteFlag',0)
+    ->select('WorkSpec','service_work.Work_ID','Loc_Name','Sch_Site_Visit','Act_Site_Visit','Tender_Status_Name','Tender_Status_ID','WorkDetail','Assoc_FirstName','Assoc_MiddleName','Assoc_LastName','Work_Type')->get();
+
     $resp=array($works);
     return $resp;
 }
@@ -1392,45 +1779,94 @@ public function biws_pushTenderToCust(Request $r)
     $values = Request::json()->all();
     $id=$values['param1'];
     $items=$values['param2'];
-    
+    //For online tenders
+   
       
 	foreach($items as $value)
 	{
 $tenderID=\DB::table('work_tendering')->where('Work_ID',$id)->where('Assoc_ID', $value['name'])
 ->update(array('pushTender_Flag'=>1));
     }
-if($tenderID)
-{
+
+    /*foreach($items as $value)
+	{
+$online_assocs=\DB::table('work_tendering')->where('Work_ID',$id)->where('pushTender_Flag', 1)->where('Online_Flag',1)
+->select('Assoc_ID')->get();
+       
+        foreach($online_assocs as $assoc)
+            {
+                $assoc_user_id=\DB::table('associate')->join('contacts','contacts.Contact_ID','=','associate.Contact_ID')->join('users','users.username','=','contacts.Contact_phone')
+                ->where('associate.Assoc_ID',$assoc->Assoc_ID)->select('users.id')->first();
+                $notify_user=User::where('id', $assoc_user_id->id)->get();
+                foreach($notify_user as $user)
+            {
+               
+                \Notification::send($user,new QuotesReceivedDB());
+        \Notification::route('mail',$user['email'])->notify(new QuotesReceivedEmail());
+            }
+            }
+    }*/
+    $notify_user_id=\DB::table('service_work')
+    ->join('sales_lead','service_work.Lead_ID','=','sales_lead.Lead_ID')
+    ->join('sales_customer','sales_customer.Customer_ID','=','sales_lead.Cust_ID')
+    ->join('contacts','contacts.Contact_ID','=','sales_customer.Contact_ID')
+    ->join('users','users.username','=','contacts.Contact_phone')->where('service_work.Work_ID',$id)
+    ->select('id')->first();
+    $notify_users=User::where('id', $notify_user_id->id)->get();
+                        foreach($notify_users as $user)
+                        {
+                            \Notification::send($user,new QuotesReceivedDB());
+                            \Notification::route('mail',$user['email'])->notify(new QuotesReceivedEmail());
+                            
+                        }
+                        
+
     $leadID=\DB::table('service_work')->where('Work_ID',$id)->pluck('Lead_ID');
 //$updateLead=\DB::table('sales_lead')->where('Lead_ID',$leadID[0])->update(array());
 $updateWorkStatus=\DB::table('service_work')->where('Work_ID',$id)->update(array('WorkStatus'=>15,'Cust_Status_ID'=>7));
     $resp=array('Success'=>true);
     return $resp;
-}
+
 
     
 }
 public function biws_getSelectedTenderAssocs($id)
 {
+    
     $assocs=\DB::table('work_tendering')
     ->join('associate', 'associate.Assoc_ID', '=','work_tendering.Assoc_ID')
+     ->leftjoin('service_work', 'service_work.Work_ID', '=','work_tendering.Work_ID')
 ->join('associate_details', 'associate_details.Assoc_ID','=','associate.Assoc_ID')
 ->join('contacts', 'contacts.Contact_ID', '=','associate.Contact_ID')
 ->join('address','address.Address_ID','=','associate.Address_ID')
 ->leftjoin('status', 'status.Assoc_Status','=','associate.Assoc_Status')
-->where('Work_ID',$id)->where('work_tendering.DeleteFlag',0)->where('pushTender_Flag',1)
-
+->where('work_tendering.Work_ID',$id)->where('work_tendering.DeleteFlag',0)->where('pushTender_Flag',1)
+->select('work_tendering.WorkTender_ID','work_tendering.Work_ID','work_tendering.Assoc_ID','TotalQuote','SelectStatus','Tender_Rec_Flag','Payment_Terms','work_tendering.Work_Days','Sch_Site_Visit','Act_Site_Visit','TenderFinish_Flag','pushTender_Flag','ReqSiteVisit_Flag','associate.Assoc_Status','Assoc_FirstName','Assoc_MiddleName','Assoc_LastName','Assoc_Code','WorkDetail','WorkSpec','ActualSite_Analysis_Date','AssocVisitFlag','Rating','Payment_Flag','Address_town')
     ->get();
+    
+    foreach($assocs as $assoc)
+    {
+        if($assoc->Payment_Flag ==0)
+        {
+            $assoc->TotalQuote=10;
+        }
+        else 
+        {
+            $assoc->TotalQuote= $assoc->TotalQuote;
+        }
+    }
     $resp=array($assocs);
     return $resp;
 }
 public function biws_getSelectedTenderItems($id)
 {
-    $tenders=\DB::table('work_tender_details_lab')
     
+    $tenders=\DB::table('work_tender_details_lab')
+    ->join('work_tendering', 'work_tendering.WorkTender_ID','=','work_tender_details_lab.WorkTender_ID')
     ->join('serv_line_items', 'serv_line_items.LineItem_ID','=','work_tender_details_lab.LineItem_ID')
     ->join('units', 'units.Unit_ID','=','serv_line_items.UnitID')
    ->where('work_tender_details_lab.WorkTender_ID',$id)
+   ->select('LineItem_Name','serv_line_items.LineItem_ID','work_tender_details_lab.Comments','work_tender_details_lab.Quantity','Unit_Code','work_tender_details_lab.Value','work_tender_details_lab.Rate','TenderFinish_Flag','WorkTenderLab_ID','work_tendering.WorkTender_ID')
     ->get();
     $resp=array($tenders);
     return $resp; 
@@ -1465,8 +1901,38 @@ else{
 }
     }
     $leadID=\DB::table('service_work')->where('Work_ID',$wid)->pluck('Lead_ID');
-    $updateLead=\DB::table('sales_lead')->where('Lead_ID',$leadID[0])->update(array('Cust_Status_ID'=>8));
-    $updateWorkStatus=\DB::table('service_work')->where('Work_ID',$wid)->update(array('WorkStatus'=>17));
+    //$updateLead=\DB::table('sales_lead')->where('Lead_ID',$leadID[0])->update(array('Cust_Status_ID'=>8));
+    $updateWorkStatus=\DB::table('service_work')->where('Work_ID',$wid)->update(array('WorkStatus'=>17,'Cust_Status_ID'=>8));
+
+    //Cust Notification
+    $CustName=\DB::table('service_work')->join('sales_lead','sales_lead.Lead_ID','=','service_work.Lead_ID')
+    ->join('sales_customer','sales_customer.Customer_ID','=','sales_lead.Cust_ID')
+    ->where('service_work.Work_ID',$wid)->select('sales_customer.Cust_FirstName','sales_customer.Cust_LastName')->first();
+    $notify_users=User::whereIn('id', $this->notifiables)->get();
+                        foreach($notify_users as $user)
+                        {
+                \Notification::send($user,new RequestAssocVisitDB($CustName->Cust_FirstName . $CustName->Cust_LastName, $wid));
+                \Notification::route('mail',$user['email'])->notify(new RequestAssocVisitEmail($CustName->Cust_FirstName . $CustName->Cust_LastName, $wid));
+                        }
+                        //Assoc Notification
+                        //Check if associate is online or offline
+                        $chkAssociate=\DB::table('work_tendering')->where('Assoc_ID',$associd)->where('Online_Flag',1)->get();
+                        if(count($chkAssociate)!=0)
+                        {
+                            $assoc_user_id=\DB::table('associate')
+                            // ->join('contacts','contacts.Contact_ID','=','associate.Contact_ID')
+                             ->join('users','users.id','=','associate.User_ID')
+                                    ->where('associate.Assoc_ID',$associd)->select('users.id')->first();
+                                    $notify_user=User::where('id', $assoc_user_id->id)->get();
+                                    foreach($notify_user as $assoc)
+                                {
+                                   
+                                    \Notification::send($assoc,new CustomerIntrestDB());
+                            \Notification::route('mail',$assoc['email'])->notify(new CustomerIntrestEmail());
+                                }
+                        }
+       
+
     $resp=array($tids);
     return $resp;
 }
@@ -1475,12 +1941,36 @@ public function biws_confirmAssoc(Request $r)
     $values = Request::json()->all();
     $tid=$values['param1'];
     $wid=\DB::table('work_tendering')->where('WorkTender_ID', $tid)->pluck('Work_ID');
+    $assocID=\DB::table('work_tendering')->where('WorkTender_ID', $tid)->pluck('Assoc_ID');
+    $custName=\DB::table('service_work')->join('sales_lead','sales_lead.Lead_ID','=','service_work.Lead_ID')
+    ->join('sales_customer','sales_customer.Customer_ID','=','sales_lead.Cust_ID')
+    ->where('service_work.Work_ID',$wid[0])->select('sales_customer.Cust_FirstName','sales_customer.Cust_LastName')->first();
+    
     $confirmAssoc=\DB::table('work_tendering')->where('WorkTender_ID', $tid)->update(array('SelectStatus'=>1,'Assoc_Status'=>7));
     if($confirmAssoc)
     {
         $leadID=\DB::table('service_work')->where('Work_ID',$wid[0])->pluck('Lead_ID');
         $updateLead=\DB::table('sales_lead')->where('Lead_ID',$leadID[0])->update(array('Cust_Status_ID'=>11));
-        $updateWorkStatus=\DB::table('service_work')->where('Work_ID',$wid[0])->update(array('WorkStatus'=>6, 'InitWO_Flag'=>1));
+        $updateWorkStatus=\DB::table('service_work')->where('Work_ID',$wid[0])->update(array('WorkStatus'=>6, 'InitWO_Flag'=>1,'Cust_Status_ID'=>11));
+
+        //PMQA Notification
+        $notify_user=User::where('id', $this->notifiables)->get();
+                foreach($notify_user as $user)
+            {
+                \Notification::send($user,new WorkConfirmDB($wid[0],$custName->Cust_FirstName.' ' .$custName->Cust_LastName,1));
+                \Notification::route('mail',$user['email'])->notify(new WorkConfirmEmail($wid[0],$custName->Cust_FirstName.' ' .$custName->Cust_LastName,1));
+            }
+
+            //AssocNotification
+            $assoc_user_id=\DB::table('associate')->join('contacts','contacts.Contact_ID','=','associate.Contact_ID')->join('users','users.username','=','contacts.Contact_phone')
+                ->where('associate.Assoc_ID',$assocID[0])->select('users.id')->first();
+                $notify_assoc_user=User::where('id', $assoc_user_id->id)->get();
+                foreach($notify_assoc_user as $assoc)
+            {
+               
+                \Notification::send($assoc,new WorkConfirmDB($wid[0],$custName->Cust_FirstName.' ' .$custName->Cust_LastName,2));
+        \Notification::route('mail',$assoc['email'])->notify(new WorkConfirmEmail($wid[0],$custName->Cust_FirstName.' ' .$custName->Cust_LastName,2));
+            }
         $resp=array('Success'=>true);
         return $resp;
     }
@@ -1508,7 +1998,22 @@ public function biws_rejectAssoc(Request $r)
     }
     $leadID=\DB::table('service_work')->where('Work_ID',$wid[0])->pluck('Lead_ID');
         $updateLead=\DB::table('sales_lead')->where('Lead_ID',$leadID[0])->update(array('Cust_Status_ID'=>7));
-        $updateWorkStatus=\DB::table('service_work')->where('Work_ID',$wid[0])->update(array('WorkStatus'=>16));
+        $updateWorkStatus=\DB::table('service_work')->where('Work_ID',$wid[0])->update(array('WorkStatus'=>16,'Cust_Status_ID'=>7));
+
+ //Notification
+ $custName=\DB::table('service_work')->join('sales_lead','sales_lead.Lead_ID','=','service_work.Lead_ID')
+ ->join('sales_customer','sales_customer.Customer_ID','=','sales_lead.Cust_ID')
+ ->where('service_work.Work_ID',$wid[0])->select('sales_customer.Cust_FirstName','sales_customer.Cust_LastName')->first();
+
+ $assocName=\DB::table('work_tendering')->join('associate','associate.Assoc_ID','=','work_tendering.Assoc_ID')
+ ->where('WorkTender_ID', $tid)->select('associate.Assoc_FirstName','associate.Assoc_LastName')->first();
+
+ $notify_user=User::where('id', $this->notifiables)->get();
+                foreach($notify_user as $user)
+            {
+                \Notification::send($user,new WorkRejectedDB($custName->Cust_FirstName.' ' .$custName->Cust_LastName,$assocName->Assoc_FirstName.' '.$assocName->Assoc_LastName,$wid[0]));
+                \Notification::route('mail',$user['email'])->notify(new WorkRejectedDB($custName->Cust_FirstName.' ' .$custName->Cust_LastName,$assocName->Assoc_FirstName.' '.$assocName->Assoc_LastName,$wid[0]));
+            }       
 }
     $resp=array('Success'=>true);
         return $resp;
@@ -1530,7 +2035,7 @@ public function biws_getAssocTender($aid, $wid)
         
     ->join('location', 'location.Loc_ID','=','sales_customer.Loc_ID')
     ->where('work_tendering.Work_ID',$wid)->where('work_tendering.Assoc_ID', $aid)
-    ->select('work_tendering.*','sales_customer.*','location.Loc_Name', 'service_work.Work_Type','service_work.Category')->get();
+    ->select('work_tendering.*','location.Loc_Name', 'service_work.Work_Type','service_work.Category')->get();
     $resp=array($workDetails);
     return $resp;
 }
@@ -1564,7 +2069,15 @@ public function biws_getItemDetails($id)
 public function biws_chkWorkDaysExists($id)
 {
     $chkWorkDays=\DB::table('work_tendering')->where('WorkTender_ID',$id)->pluck('Work_Days');
-$count=count($chkWorkDays);
+    if($chkWorkDays[0]==null)
+    {
+        $count=0;
+    }
+    else
+    {
+        $count=1;
+    }
+
     $resp=array($count);
     return $resp;
 }
@@ -1574,8 +2087,22 @@ public function biws_pushBackToPMA(Request $r)
     $tid=$values['param1'];
     $statusChange=\DB::table('work_tendering')->where('WorkTender_ID',$tid)
     ->update(array('Tender_Rec_Flag'=>1,'TenderFinish_Flag'=>1,'Assoc_status'=>2));
-    $resp=array('Success'=>true);
-    return $resp;
+    $assoc_ID=\DB::table('work_tendering')->join('associate','associate.Assoc_ID','=','work_tendering.Assoc_ID')->where('WorkTender_ID',$tid)->select('work_tendering.Assoc_ID','Assoc_FirstName','Assoc_LastName')->first();
+   
+    $notify_user=User::whereIn('id', $this->notifiables)->get();
+    foreach($notify_user as $user)
+{
+   
+    \Notification::send($user,new TenderSubmittedDB($assoc_ID->Assoc_FirstName . $assoc_ID->Assoc_LastName));
+\Notification::route('mail',$user['email'])->notify(new TenderSubmittedEmail($assoc_ID->Assoc_FirstName . $assoc_ID->Assoc_LastName));
+}
+$resp=array('Success'=>true);
+return $resp;    
+          
+  
+
+
+   
 }
 public function biws_finishWO(Request $r)
 {
@@ -1584,7 +2111,30 @@ public function biws_finishWO(Request $r)
         $updateLead=\DB::table('sales_lead')->where('Lead_ID',$leadID[0])->update(array('Cust_Status_ID'=>12));
 
     $finish=\DB::table('service_work')->where('Work_ID',  $values['param1'])
-    ->update(array('WorkStatus'=>13,'WOSignUp_Flag'=>1));//7
+    ->update(array('WorkStatus'=>14,'WOSignUp_Flag'=>1,'Cust_Status_ID'=>12 ));//7
+//Customer Notification
+$notify_user_id=\DB::table('sales_customer')->join('sales_lead','sales_lead.Cust_ID','=','sales_customer.Customer_ID')
+        ->join('contacts','contacts.Contact_ID','=','sales_customer.Contact_ID')
+        ->join('users','users.username','=','contacts.Contact_phone')->where('sales_lead.Lead_ID',$leadID[0])
+        ->select('id')->first();
+        $notify_user=User::where('id', $notify_user_id->id)->get();
+    
+foreach($notify_user as $user)
+        {
+            \Notification::send($user,new WorkOrderGeneratedDB());
+    \Notification::route('mail',$user['email'])->notify(new WorkOrderGeneratedEmail($values['param1']));
+        }
+
+        //Assoc Notification
+        $assocID=\DB::table('work_tendering')->where('Work_ID', $values['param1'])->where('SelectStatus',1)->pluck('Assoc_ID');
+        $assoc_user_id=\DB::table('associate')->join('contacts','contacts.Contact_ID','=','associate.Contact_ID')->join('users','users.username','=','contacts.Contact_phone')
+                ->where('associate.Assoc_ID',$assocID[0])->select('users.id')->first();
+                $assoc_user=User::where('id', $assoc_user_id->id)->get();
+                foreach($assoc_user as $assoc)
+                {
+                    \Notification::send($assoc,new WorkOrderGeneratedDB());
+                    \Notification::route('mail',$assoc['email'])->notify(new WorkOrderGeneratedEmail($values['param1']));
+                }
     $resp1=array("Success"=>true);
     return $resp1;
 }
@@ -1745,6 +2295,494 @@ public function biws_getCertifyAssocList($id)
 	}
 		
 
-	}
+    }
+    public function biws_chkRejectCount($id)
+    {
+        $Rejects=\DB::table('work_tendering')->where('Work_ID',$id)
+        ->where('SelectStatus',2)->get();
+        $count=count($Rejects);
+        $resp=array("RejectFlag"=>$count);
+        return $resp;
+    }
+     public function biws_AllOnlineLeadsByCust($id)
+    {
+        
+
+    /*$leads=\DB::table('sales_lead')
+    ->leftjoin('service_work','service_work.Lead_ID','=','sales_lead.Lead_ID')
+        ->join('sales_customer','sales_customer.Customer_ID','=','sales_lead.Cust_ID')
+        ->where('sales_lead.Flag',2)->where('sales_lead.DeleteFlag',0)->where('sales_lead.Cust_ID',$id)
+  
+    ->get();
+    
+    $newArray=[];
+    foreach($leads as $lead)
+    {
+        if($lead->Cust_Status_ID==null)
+        {
+            $leadData=\DB::table('sales_lead')
+            ->join('sales_customer','sales_customer.Customer_ID','=','sales_lead.Cust_ID')
+            ->leftjoin('location', 'location.Loc_ID','=','sales_customer.Loc_ID')
+            ->where('sales_lead.Flag',2)->where('sales_lead.DeleteFlag',0)->where('sales_lead.Cust_ID',$id)
+                      ->select('sales_lead.Lead_ID','Cust_ID','Lead_StatusID','Cust_FirstName','Cust_MidName','Cust_LastName',
+            'Loc_Name','PinCode AS Loc_Name','Proj_Details AS WorkDetail',\DB::raw('"Enquiry Received" AS Cust_Status_Name') )->get();
+            array_push($newArray,$leadData);
+        }
+        else 
+        {
+            $workData=\DB::table('sales_lead')
+           ->leftjoin('service_work','service_work.Lead_ID','=','sales_lead.Lead_ID')            
+            ->join('sales_customer','sales_customer.Customer_ID','=','sales_lead.Cust_ID')
+            ->leftjoin('customer_status','customer_status.Cust_Status_ID','=','service_work.Cust_Status_ID')
+            ->leftjoin('location', 'location.Loc_ID','=','sales_customer.Loc_ID')
+            ->where('sales_lead.Flag',2)->where('sales_lead.DeleteFlag',0)->where('sales_lead.Cust_ID',$id)
+                      ->select('sales_lead.Lead_ID','Cust_ID','Lead_StatusID','service_work.Cust_Status_ID','Cust_ID','service_work.Work_ID',
+            'WorkSpec','Work_Type','Cust_FirstName','Cust_MidName','Cust_LastName','DeleteFlag','Site_Analysis_Date','WorkStatus',
+            'ActualSite_Analysis_Date','SiteAnalysis_Flag','Loc_Name','WorkDetail', 'Cust_Status_Name')->get();
+            array_push($newArray,$workData);
+        }
+       
+    }
+
+    
+    $resp=array($newArray);
+    return $resp;*/
+
+$leads=\DB::table('sales_lead')
+    ->leftjoin('service_work','service_work.Lead_ID','=','sales_lead.Lead_ID')
+    
+    ->join('sales_customer','sales_customer.Customer_ID','=','sales_lead.Cust_ID')
+    ->leftjoin('customer_status','customer_status.Cust_Status_ID','=','service_work.Cust_Status_ID')
+    ->leftjoin('location', 'location.Loc_ID','=','sales_customer.Loc_ID')
+    ->where('sales_lead.Flag',2)->where('sales_lead.DeleteFlag',0)->where('sales_lead.Cust_ID',$id)
+  
+    ->select('sales_lead.Lead_ID','Cust_ID','Lead_StatusID','service_work.Cust_Status_ID','Cust_ID','service_work.Work_ID',
+    'WorkSpec','Work_Type','Cust_FirstName','Cust_MidName','Cust_LastName','DeleteFlag','Site_Analysis_Date','WorkStatus',
+    'ActualSite_Analysis_Date','SiteAnalysis_Flag','Loc_Name','PinCode','WorkDetail','Proj_Details','Cust_Status_Name',
+    'Work_Type')->get();
+
+foreach($leads as $lead)
+{
+    if($lead->Cust_Status_ID == null)
+    {
+        $lead->Cust_Status_Name='Enquiry Received';
+        $lead->WorkDetail=$lead->Proj_Details;
+       $lead->Loc_Name=$lead->PinCode;
+       
+    }
+  else{
+    $lead->Cust_Status_Name=$lead->Cust_Status_Name;
+    $lead->WorkDetail=$lead->WorkDetail;
+   $lead->Loc_Name=$lead->Loc_Name;
+
+  }
+}
+
+$resp=array($leads);
+return $resp;
+
+    }
+    public function addNewUser(Request $r)
+    {
+        $userData = array('User_Name'=>'test2','username' => 'Me2', 'Role_ID' => '11');
+        LoginUser::create($userData);
+       
+$resp=array('Success'=>true);
+return $resp;
+
+    }
+    public function pdfview($id)
+{
+//$items = DB::table("items")->get();
+//view()->share('items',$items);
+
+
+$pdf = PDF::loadView('downloadpdf')->setPaper('a4');
+//$pdf->stream('pdfview.pdf');
+return $pdf->download('pdfview.pdf');
+
+//return view('pdfview');
+}
+public function cust_woSigned(Request $r)
+{
+    $values = Request::json()->all();
+    /*$leadID=\DB::table('service_work')->where('Work_ID',$values['param1'])->pluck('Lead_ID');
+    $updateLead=\DB::table('sales_lead')->where('Lead_ID',$leadID[0])->update(array('Cust_Status_ID'=>13));
+
+$finish=\DB::table('service_work')->where('Work_ID',  $values['param1'])
+->update(array('WorkStatus'=>13,'Cust_Status_ID'=>13 ,'WOSignedUp_Flag'=>1));*/
+$assocSign=\DB::table('work_tendering')->where('Work_ID',$values['param1'])->where('SelectStatus',1)
+->pluck('Assoc_WOSignUp_Flag');
+$custSign=\DB::table('work_tendering')->where('Work_ID',$values['param1'])->where('SelectStatus',1)
+->update(array('Cust_WOSignUp_Flag'=>1));
+
+     $changeStatus=\DB::table('service_work')->where('Work_ID',  $values['param1'])
+->update(array('WorkStatus'=>14,'Cust_Status_ID'=>13));
+
+if($assocSign[0]==1)
+{
+    $finish=\DB::table('service_work')->where('Work_ID',  $values['param1'])
+->update(array('WorkStatus'=>13,'Cust_Status_ID'=>15 ,'WOSignedUp_Flag'=>1));
+}
+
+//Notification
+
+$notify_user=User::where('id', $this->notifiables)->get();
+foreach($notify_user as $user)
+        {
+            \Notification::send($user,new SignUpCompletedDB($values['param1'],1));
+    \Notification::route('mail',$user['email'])->notify(new SignUpCompletedEmail($values['param1'],1));
+        }
+$resp1=array('Success'=>true);
+return $resp1;
+
+
+}
+public function assoc_woSigned(Request $r)
+{
+    $values = Request::json()->all();
+    /*$leadID=\DB::table('service_work')->where('Work_ID',$values['param1'])->pluck('Lead_ID');
+    $updateLead=\DB::table('sales_lead')->where('Lead_ID',$leadID[0])->update(array('Cust_Status_ID'=>13));
+
+$finish=\DB::table('service_work')->where('Work_ID',  $values['param1'])
+->update(array('WorkStatus'=>13,'Cust_Status_ID'=>13 ,'WOSignedUp_Flag'=>1));*/
+$custSign=\DB::table('work_tendering')->where('Work_ID',$values['param1'])->where('SelectStatus',1)
+->pluck('Cust_WOSignUp_Flag');
+$assocSign=\DB::table('work_tendering')->where('Work_ID',$values['param1'])->where('SelectStatus',1)
+->update(array('Assoc_WOSignUp_Flag'=>1));
+$changeStatus=\DB::table('service_work')->where('Work_ID',  $values['param1'])
+->update(array('WorkStatus'=>14,'Cust_Status_ID'=>13));
+if($custSign[0]==1)
+{
+    $finish=\DB::table('service_work')->where('Work_ID',  $values['param1'])
+->update(array('WorkStatus'=>13,'Cust_Status_ID'=>15 ,'WOSignedUp_Flag'=>1));
+}
+
+//Notification
+$notify_user=User::where('id', $this->notifiables)->get();
+foreach($notify_user as $user)
+        {
+            \Notification::send($user,new SignUpCompletedDB($values['param1'],2));
+    \Notification::route('mail',$user['email'])->notify(new SignUpCompletedEmail($values['param1'],2));
+        }
+$resp1=array("Success"=>true);
+return $resp1;
+}
+public function chkWOSigned($id)
+{
+    $chkSignWork=\DB::table('service_work')->where('Work_ID',$id)->pluck('WOSignedUp_Flag');
+    $chkAllSign=\DB::table('work_tendering')->where('Work_ID',$id)->where('SelectStatus',1)->select('Cust_WOSignUp_Flag','Assoc_WOSignUp_Flag')->get();
+    $resp=array("WOSign"=>$chkSignWork[0],$chkAllSign
+    // "Assoc_Sign"=>$chkAllSign[0]['Assoc_WOSignUp_Flag'],"Cust_Sign"=>$chkAllSign[0]['Cust_WOSignUp_Flag']
+);
+    return $resp;
+}
+public function getWorkDays($id)
+{
+    $chkWorkDays=\DB::table('work_tendering')->where('WorkTender_ID',$id)->pluck('Work_Days');
+   
+    $resp=array($chkWorkDays[0]);
+    return $resp;
+}
+    public function getItemRate($id)
+    {
+        $rate=\DB::table('work_tender_details_lab')
+        ->where('WorkTenderLab_ID', $id)->pluck('Rate');
+        $resp=array($rate[0]);
+        return $resp;
+    }
+    public function getStatusNames($id)
+    {
+        
+        $Status_ID=\DB::table('work_tendering')
+        ->join('service_work','service_work.Work_ID','=','work_tendering.Work_ID')
+        ->join('customer_status','customer_status.Cust_Status_ID','=','service_work.Cust_Status_ID')
+        ->where('work_tendering.Work_ID',$id)->where('work_tendering.SelectStatus',1)
+        ->where('customer_status.Cust_Status_ID','>=',11)
+        ->select('Cust_Status_Name')
+        ->get();
+
+        
+        $resp=array($Status_ID);
+        return $resp;
+
+    }
+    public function getAssocStatus($aid,$wid)
+    {
+        $status=\DB::table('work_tendering')
+        ->leftjoin('assoc_tender_status','assoc_tender_status.Tender_Status_ID','=','work_tendering.Assoc_Status')
+        ->where('work_tendering.Work_ID',$wid)->where('Assoc_ID',$aid)
+        ->where('work_tendering.Assoc_Status','!=',5)
+        ->where('work_tendering.Assoc_Status','!=',6)
+       
+        ->select('Tender_Status_Name')->get();
+      
+        $resp=array($status);
+        return $resp;
+    }
+    public function getUserDetails($id)
+    {
+        //$username=\DB::table('users')->pluck('username');
+        $details=\DB::table('users')
+        ->join('sales_customer','sales_customer.User_ID','=','users.id')
+        ->join('contacts','contacts.Contact_ID','=','sales_customer.Contact_ID')
+        ->where('id',$id)->select('username','email','Cust_FirstName','sales_customer.Contact_ID' )
+        ->get();
+        $resp=array($details);
+        return $resp;
+    }
+    public function saveEmailID(Request $r)
+    {
+        $values = Request::json()->all();
+        $updateEmail=\DB::table('contacts')->where('Contact_ID',$values['contact_id'])->update(array('Contact_email'=>$values['rate']));
+        if($updateEmail)
+        {
+            $resp=array('Success'=>true);
+            return $resp;
+        }
+        else{
+            $resp=array('Success'=>false);
+            return $resp;
+        }
+    }
+    public function biws_addCustomer(Request $r)
+    {
+        $values = Request::json()->all();
+        $custName=$values['user']['first_values']['custName'];
+        $contact=(string)$values['user']['first_values']['contact'];
+        $location=$values['user']['first_values']['loc'];
+        $email=$values['user']['first_values']['email'];
+        $password=$values['pwd'];
+        $pwd=$this->biws_getHash($password);
+      /*  $chkContact=\DB::table('users')->where('username',$contact)->get();
+        $chkEmail=\DB::table('users')->where('email',$email)->get();
+        $countContact=count($chkContact);
+        $countEmail=count($chkEmail);
+        if($countContact==0 && $countEmail==0)
+        {*/
+            $contactID=\DB::table('contacts')->insertGetID(array('Contact_name'=>$custName,'Contact_phone'=>$contact, 'Contact_email'=>$email));
+
+           
+
+            $userData=array('User_Name'=>$custName,'username'=>$contact, 'password'=>$pwd, 'Role_ID'=>16, 'email'=>$email);
+            $signUp=\DB::table('users')->insertGetID($userData);
+            $signUp1=\DB::table('logins')->insertGetID($userData);
+            
+            $token=auth()->attempt(['username' =>$contact, 'password' => $values['pwd']]);
+           $customerID=\DB::table('sales_customer')->insertGetID(array('Cust_FirstName'=>$custName, 'Flag'=>1, 'Contact_ID'=>$contactID, 'User_ID'=>$signUp,'Pincode'=>$location));
+        
+        
+        $customer=\DB::table('sales_customer')
+            ->leftjoin('contacts','contacts.Contact_ID','=','sales_customer.Contact_ID')
+            ->join('users','users.username','=','contacts.Contact_phone')
+
+->where('sales_customer.Flag',1)->where('contacts.Contact_phone','=',$contact)
+->select('sales_customer.Customer_ID', 'sales_customer.Cust_FirstName','users.ID','Contact_phone','Contact_email')->get();
+            return response()->json(['token'=>$token,'Success'=>true,'Cust_ID'=>$customer]);
+           /* }
+            
+            else{
+                if($countEmail!=0)
+                {
+                    $resp=array('Success'=>false,'Error'=>'This email is already registered. Please register with a new email.');
+                    return $resp;
+                }
+               else if($countContact!=0)
+                {
+                    $resp=array('Success'=>false,'Error'=>'This number is already registered. Please register with a new number.');
+                    return $resp;
+                }
+            }*/
+    }
+  public function testEmailNoti() 
+  {
+    /*$notify_users=User::whereIn('id', $this->notifiables)->get();*/
+    $leadID=\DB::table('service_work')->join('sales_lead','sales_lead.Lead_ID','=','service_work.Lead_ID')
+    ->where('Work_ID',214)->pluck('sales_lead.Cust_ID');
+    $notify_user_id=\DB::table('users')
+    ->join('sales_customer','users.id','=','sales_customer.User_ID')
+  
+       // ->join('contacts','contacts.Contact_ID','=','sales_customer.Contact_ID')
+        ->where('sales_customer.Customer_ID',$leadID[0])
+      //  ->select('users.id')->first();
+      ->get();
+       /* $notify_user=User::where('id', $notify_user_id->id)->get();
+        foreach($notify_user as $user)
+        {
+            \Notification::send($user,new siteVisitScheduledDB(21/2/2021));
+    \Notification::route('mail',$user['email'])->notify(new SiteVisitShceduled(21/02/2021));
+        }
+*/
+        $resp=array($leadID[0]);
+        return $resp;
+                      
+  }
+
+  public function chkContactExists($no)
+  {
+      $exists=\DB::table('users')->where('username',$no)->select('Role_ID')->first();
+      foreach($exists as $s)
+      {
+        if($exists->Role_ID ==11)
+        {
+          $userDetails=\DB::table('users')->where('username',$no)->leftjoin('associate','associate.User_ID','=','users.id')->get();
+
+        }
+        if($exists->Role_ID ==16)
+        {
+          $userDetails=\DB::table('users')->where('username',$no)->leftjoin('sales_customer','sales_customer.User_ID','=','users.id')
+          ->get();
+         
+        }
+       
+      }
+      
+     
+      foreach($userDetails as $user)
+      {
+          $user->Reg_Flag =2;
+         
+      }
+      $resp=array($userDetails);
+      return $resp;
+          
+  }
+  public function biws_resetPassword(Request $r)
+  {
+    $values = Request::json()->all();
+    //$contact=(string)$values['user']['contact'];
+    
+      
+if($values['user']['first_values']['Role_ID']==11)
+{
+    $contact=(string)$values['user']['first_values']['username'];
+    $password=$values['pwd'];
+   
+   $pwd=$this->biws_getHash($password);
+$updatePwd=\DB::table('users')->where('username',$contact)->update(array('password'=>$pwd));
+$token=auth()->attempt(['username' =>$contact, 'password' => $values['pwd']]);
+    $assoc=\DB::table('associate')->join('contacts','contacts.Contact_ID','=','associate.Contact_ID')
+    ->join('users','users.username','=','contacts.Contact_phone')
+     ->where('associate.Online_Flag',1)->where('contacts.Contact_phone','=',$contact)
+     ->select('associate.Assoc_ID', 'associate.Assoc_FirstName','associate.Assoc_MiddleName','associate.Assoc_LastName', 'users.Role_ID')->first();
+     return response()->json(['token'=>$token,'Success'=>true,'Assoc'=>$assoc]); 
+    
+}
+if($values['user']['first_values']['Role_ID']==16){
+    $contact=(string)$values['user']['first_values']['username'];
+    $password=$values['pwd'];
+   
+   $pwd=$this->biws_getHash($password);
+$updatePwd=\DB::table('users')->where('username',$contact)->update(array('password'=>$pwd));
+$token=auth()->attempt(['username' =>$contact, 'password' => $values['pwd']]);
+    $customer=\DB::table('sales_customer')
+    ->leftjoin('contacts','contacts.Contact_ID','=','sales_customer.Contact_ID')
+    ->join('users','users.username','=','contacts.Contact_phone')
+
+->where('sales_customer.Flag',1)->where('contacts.Contact_phone','=',$contact)
+->select('sales_customer.Customer_ID', 'sales_customer.Cust_FirstName','users.ID','Contact_phone','Contact_email')->get();
+    return response()->json(['token'=>$token,'Success'=>true,'Cust_ID'=>$customer]);
+
+}
+
+      $resp=array($values);
+      return $resp;
+  }
+  public function biws_addNewEnquiry(Request $r)
+  {
+    $values = Request::json()->all();
+    $customerID=$values['Cust_ID'];
+    $type=$values['first_values']['type'];
+    $customer=\DB::table('sales_customer')->where('Customer_ID',$customerID)->select('Pincode','Cust_FirstName')->first();
+    if($type==1)
+                {
+        $plan=$values['first_values']['plan'];
+        $area=$values['first_values']['area'];
+        $floors=$values['first_values']['floor'];
+        $work_Start=$values['first_values']['start'];
+        
+        $leadID=\DB::table('sales_lead')->insertGetID(array('Cust_ID'=>$customerID,'Lead_StatusID'=>2,'Proj_Details'=>"New Home",'Source_ID'=>8,'Flag'=>2,'Cust_Status_ID'=>1,'PinCode'=>$customer->Pincode));  
+                    if($leadID)
+                {
+                    $notify_users=User::whereIn('id', $this->notifiables)->get();
+                   foreach($notify_users as $user)
+                   {
+                   // \Notification::route('mail', $user->email)->notify(new NewLeadNotification($customer->Cust_FirstName));
+                    \Notification::send($user,new addLeadDBNotification($customer->Cust_FirstName));
+                   }
+                  //  
+                  
+                  
+                    if($plan)
+                    {
+                        $map_Plan=\DB::table('lead_attrb_value')->insert(array('Lead_ID'=>$leadID,'Attrb_ID'=>1,'Value'=>$plan));
+                    }
+                    if($type)
+                    {
+                        $map_Type=\DB::table('lead_attrb_value')->insert(array('Lead_ID'=>$leadID,'Attrb_ID'=>5,'Value'=>$type));
+                    }
+                    if($area)
+                    {
+                       $map_Area=\DB::table('lead_attrb_value')->insert(array('Lead_ID'=>$leadID,'Attrb_ID'=>3,'Value'=>$area));
+                    }
+                    if($floors)
+                    {
+                        $map_Floor=\DB::table('lead_attrb_value')->insert(array('Lead_ID'=>$leadID,'Attrb_ID'=>4,'Value'=>$floors));
+                    }
+                    if($work_Start)
+                    {
+                        $map_Start=\DB::table('lead_attrb_value')->insert(array('Lead_ID'=>$leadID,'Attrb_ID'=>2,'Value'=>$work_Start));
+                    }
+                }
+                }
+                else{
+                    $category=$values['first_values']['category'];
+                    $catName=\DB::table('enq_category')->where('Enq_Cat_ID',$category)->pluck('Cat_Name');
+                    $leadID=\DB::table('sales_lead')->insertGetID(array('Cust_ID'=>$customerID,'Lead_StatusID'=>2,'Proj_Details'=>$catName[0],'Source_ID'=>8,'Flag'=>2,'Cust_Status_ID'=>1,'PinCode'=>$customer->Pincode));
+                    $mapCat=\DB::table('lead_category')->insert(array('Lead_ID'=>$leadID, 'Cat_ID'=>$category));
+                    if($leadID)
+                {
+                    $notify_users=User::whereIn('id', $this->notifiables)->get();
+                    foreach($notify_users as $user)
+                    {
+                    // \Notification::route('mail', $user->email)->notify(new NewLeadNotification($custName));
+                     \Notification::send($user,new addLeadDBNotification($custName));
+                    }
+                   
+                   
+                }
+            }
+            $resp=array("Success"=>true);
+            return $resp;
+        }
+    
+
+public function chkUserExists($contact, $email)  
+{
+    $chkContact=\DB::table('users')->where('username',$contact)->get();
+    $chkEmail=\DB::table('users')->where('email',$email)->get();
+    $countContact=count($chkContact);
+    $countEmail=count($chkEmail);
+    if($countContact==0 && $countEmail==0)
+    {
+        $resp=array('Success'=>true,'Error'=>'This email and contact is already registered. Please register with a new email.');
+        return $resp;
+    }
+    else if($countContact!=0 || $countEmail!=0)
+    {
+        if($countEmail!=0)
+        {
+            $resp=array('Success'=>false,'Error'=>'This email is already registered. Please register with a new email.');
+            return $resp;
+        }
+       else if($countContact!=0)
+        {
+            $resp=array('Success'=>false,'Error'=>'This number is already registered. Please register with a new number.');
+            return $resp;
+        }
+    }
+    
+    
+}
 
 }

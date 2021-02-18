@@ -51980,14 +51980,16 @@ __webpack_require__.r(__webpack_exports__);
 
 
 var Login2Component = /** @class */ (function () {
-    function Login2Component(_fuseConfigService, _formBuilder, registerService, router, sessionSt, 
+    function Login2Component(_fuseConfigService, _formBuilder, registerService, router, 
+    //private sessionSt: SessionStorageService,
+    storage, 
     //  @Inject(LOCAL_STORAGE) private storage: WebStorageService,
     snackBar, projectService, fuseProgress) {
         this._fuseConfigService = _fuseConfigService;
         this._formBuilder = _formBuilder;
         this.registerService = registerService;
         this.router = router;
-        this.sessionSt = sessionSt;
+        this.storage = storage;
         this.snackBar = snackBar;
         this.projectService = projectService;
         this.fuseProgress = fuseProgress;
@@ -52024,41 +52026,82 @@ var Login2Component = /** @class */ (function () {
         /* this.registerService.validateUser(user).subscribe(result=>{console.log(result);
          })*/
         //this.fuseProgress.show();
-        this.registerService.create_Token(user).subscribe(function (result1) {
-            console.log(result1);
-            if (result1['token']) {
-                _this.registerService.login($values).subscribe(function (result) {
-                    console.log(result);
-                    _this.loading = false;
-                    // this.fuseProgress.hide();
-                    _this.sessionSt.store('Token', result1['token']);
-                    _this.sessionSt.store('user', result[2][0]);
-                    if (result[2][0]["ID"] != null) {
-                        _this.projectService.getBIMSPrivillageDetails(result[2][0]["ID"])
-                            .subscribe(function (result1) {
-                            _this.sessionSt.store('menuPerm1', result1);
-                            _this.openSnackBar('Login Success', 'OK');
-                            if (result[2][0]["Role_ID"] == 1 || result[2][0]["Role_ID"] == 13) {
-                                _this.router.navigate(['sales']);
-                            }
-                            else if (result[2][0]["Role_ID"] == 10 || result[2][0]["Role_ID"] == 9) {
-                                _this.router.navigate(['project']);
-                            }
-                            else if (result[2][0]["Role_ID"] == 12) {
-                                _this.router.navigate(['payment']);
-                            }
-                            else if (result[2][0]["Role_ID"] == 14) {
-                                _this.router.navigate(['certif-process']);
-                            }
-                        });
+        /*this.registerService.create_Token(user).subscribe(result1=>{console.log(result1);
+            if(result1['token'])
+            {
+                this.registerService.login($values).subscribe(result=>{console.log(result);
+                    
+                  this.loading=false;
+                  // this.fuseProgress.hide();
+                  this.storage.store('Token',result1['token']);
+                   this.storage.store('user',result[2][0]);
+                   if(result[2][0]["id"]!=null)
+                   {
+                   this.projectService.getBIMSPrivillageDetails(result[2][0]["id"])
+                   .subscribe(result1=>{
+                   this.storage.store('menuPerm1', result1);
+                   
+                   this.openSnackBar('Login Success', 'OK');
+                
+               if(result[2][0]["Role_ID"]==1 || result[2][0]["Role_ID"]==13)
+                   {
+                       this.router.navigate(['sales']);
+                   }
+                   else if(result[2][0]["Role_ID"]==10 || result[2][0]["Role_ID"]==9)
+                   {
+                       this.router.navigate(['project']);
+                   }
+                   else if(result[2][0]["Role_ID"]==12)
+                   {
+                       this.router.navigate(['payment']);
+                   }
+                   else if(result[2][0]["Role_ID"]==14)
+                   {
+                       this.router.navigate(['certif-process']);
+                   }
+               });
+               
+               }
+           
+        });
+            }
+            else
+            {
+                this.openSnackBar('Invalid User!!','OK');
+                this.loading=false;
+            }
+        })*/
+        //----------------------------------------------------
+        this.registerService.login($values).subscribe(function (result) {
+            console.log(result);
+            _this.loading = false;
+            // this.fuseProgress.hide();
+            _this.storage.store('Token', result['access_token']);
+            _this.storage.store('user', result['user']);
+            if (result['user']) {
+                _this.projectService.getBIMSPrivillageDetails(result['user']['id'])
+                    .subscribe(function (result1) {
+                    _this.storage.store('menuPerm1', result1);
+                    _this.openSnackBar('Login Success', 'OK');
+                    if (result['user']['Role_ID'] == 1 || result['user']['Role_ID'] == 13) {
+                        _this.router.navigate(['sales']);
+                    }
+                    else if (result['user']['Role_ID'] == 10 || result['user']['Role_ID'] == 9) {
+                        _this.router.navigate(['project']);
+                    }
+                    else if (result['user']['Role_ID'] == 12) {
+                        _this.router.navigate(['payment']);
+                    }
+                    else if (result['user']['Role_ID'] == 14) {
+                        _this.router.navigate(['certif-process']);
                     }
                 });
             }
-            else {
-                _this.openSnackBar('Invalid User!!', 'OK');
-                _this.loading = false;
-            }
-        });
+        }),
+            function (error) {
+                console.log(error);
+                _this.openSnackBar('Server Error.' + error, 'OK');
+            };
     };
     Login2Component.prototype.openSnackBar = function (message, action) {
         this.snackBar.open(message, action, {
@@ -52077,7 +52120,7 @@ var Login2Component = /** @class */ (function () {
             _angular_forms__WEBPACK_IMPORTED_MODULE_2__["FormBuilder"],
             _register_2_register_2_service__WEBPACK_IMPORTED_MODULE_5__["Register2Service"],
             _angular_router__WEBPACK_IMPORTED_MODULE_6__["Router"],
-            ngx_webstorage__WEBPACK_IMPORTED_MODULE_8__["SessionStorageService"],
+            ngx_webstorage__WEBPACK_IMPORTED_MODULE_8__["LocalStorageService"],
             _angular_material__WEBPACK_IMPORTED_MODULE_7__["MatSnackBar"],
             _project_module_project_module_service__WEBPACK_IMPORTED_MODULE_9__["ProjectModuleService"],
             _fuse_components_progress_bar_progress_bar_service__WEBPACK_IMPORTED_MODULE_10__["FuseProgressBarService"]])
@@ -52137,87 +52180,6 @@ var Login2Module = /** @class */ (function () {
         })
     ], Login2Module);
     return Login2Module;
-}());
-
-
-
-/***/ }),
-
-/***/ "./src/app/main/pages/authentication/register-2/register-2.service.ts":
-/*!****************************************************************************!*\
-  !*** ./src/app/main/pages/authentication/register-2/register-2.service.ts ***!
-  \****************************************************************************/
-/*! exports provided: Register2Service */
-/***/ (function(module, __webpack_exports__, __webpack_require__) {
-
-"use strict";
-__webpack_require__.r(__webpack_exports__);
-/* harmony export (binding) */ __webpack_require__.d(__webpack_exports__, "Register2Service", function() { return Register2Service; });
-/* harmony import */ var tslib__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! tslib */ "./node_modules/tslib/tslib.es6.js");
-/* harmony import */ var _angular_core__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! @angular/core */ "./node_modules/@angular/core/fesm5/core.js");
-/* harmony import */ var _angular_common_http__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! @angular/common/http */ "./node_modules/@angular/common/fesm5/http.js");
-/* harmony import */ var rxjs__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! rxjs */ "./node_modules/rxjs/_esm5/index.js");
-/* harmony import */ var rxjs_add_operator_map__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! rxjs/add/operator/map */ "./node_modules/rxjs-compat/_esm5/add/operator/map.js");
-/* harmony import */ var rxjs_add_operator_catch__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! rxjs/add/operator/catch */ "./node_modules/rxjs-compat/_esm5/add/operator/catch.js");
-/* harmony import */ var rxjs_add_observable_throw__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! rxjs/add/observable/throw */ "./node_modules/rxjs-compat/_esm5/add/observable/throw.js");
-/* harmony import */ var environments_environment_prod__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(/*! environments/environment.prod */ "./src/environments/environment.prod.ts");
-
-
-
-
-
-
-
-
-var Register2Service = /** @class */ (function () {
-    function Register2Service(http) {
-        this.http = http;
-        this.API_URL = environments_environment_prod__WEBPACK_IMPORTED_MODULE_7__["environment"].API_URL;
-    }
-    Register2Service.prototype.SignUp = function (values) {
-        var data = JSON.stringify(values);
-        return this.http.post(this.API_URL + '/signupAssoc', data, this.options);
-    };
-    Register2Service.prototype.saveDetails = function (values) {
-        var data = JSON.stringify(values);
-        return this.http.post(this.API_URL + '/saveDetails', data, this.options);
-    };
-    Register2Service.prototype.getLocations = function () {
-        return this.http.get(this.API_URL + '/getLocations').map(function (response) { return response["0"]; });
-    };
-    Register2Service.prototype.create_Token = function (user) {
-        var userData = "username=" + user.username + "&password=" + user.password + "&grant_type=password";
-        var reqHeader = new _angular_common_http__WEBPACK_IMPORTED_MODULE_2__["HttpHeaders"]({ 'Content-Type': 'application/x-www-form-urlencoded' });
-        console.log('UserData' + userData);
-        return this.http.post(this.API_URL + '/CreateToken', userData, { headers: reqHeader });
-    };
-    Register2Service.prototype.login = function (user) {
-        var data = JSON.stringify(user);
-        return this.http.post(this.API_URL + '/login', data, this.options);
-    };
-    Register2Service.prototype.getAssocTypes = function () {
-        return this.http.get(this.API_URL + '/getAssocTypes').map(function (response) { return response["0"]; });
-    };
-    Register2Service.prototype.getUserTypes = function (id) {
-        return this.http.get(this.API_URL + '/getUserTypes/' + id).map(function (response) { return response["0"]; });
-    };
-    Register2Service.prototype.saveContractorDetails = function (values) {
-        var data = JSON.stringify(values);
-        return this.http.post(this.API_URL + '/saveContractorDetails', data, this.options);
-    };
-    Register2Service.prototype.getPrivillageDetails = function (category) {
-        return this.http.get(this.API_URL + '/getBIWSPermissions/' + category).map(function (response) { return response["0"]; });
-    };
-    Register2Service.prototype.errorHandler = function (error) {
-        return rxjs__WEBPACK_IMPORTED_MODULE_3__["Observable"].throw(error.message || "Server Error");
-    };
-    Register2Service = tslib__WEBPACK_IMPORTED_MODULE_0__["__decorate"]([
-        Object(_angular_core__WEBPACK_IMPORTED_MODULE_1__["Injectable"])({
-            providedIn: 'root'
-        }),
-        tslib__WEBPACK_IMPORTED_MODULE_0__["__metadata"]("design:paramtypes", [_angular_common_http__WEBPACK_IMPORTED_MODULE_2__["HttpClient"]])
-    ], Register2Service);
-    return Register2Service;
 }());
 
 
@@ -52525,6 +52487,8 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var _project_module_bwo_app_project_module_bwo_app_module__WEBPACK_IMPORTED_MODULE_12__ = __webpack_require__(/*! ./project-module-bwo-app/project-module-bwo-app.module */ "./src/app/main/pages/project-module-bwo-app/project-module-bwo-app.module.ts");
 /* harmony import */ var _online_module_online_module_module__WEBPACK_IMPORTED_MODULE_13__ = __webpack_require__(/*! ./online-module/online-module.module */ "./src/app/main/pages/online-module/online-module.module.ts");
 /* harmony import */ var _admin_services_admin_module__WEBPACK_IMPORTED_MODULE_14__ = __webpack_require__(/*! ./admin/services/admin.module */ "./src/app/main/pages/admin/services/admin.module.ts");
+/* harmony import */ var _users_users_module__WEBPACK_IMPORTED_MODULE_15__ = __webpack_require__(/*! ./users/users.module */ "./src/app/main/pages/users/users.module.ts");
+
 
 
 
@@ -52550,7 +52514,7 @@ var PagesModule = /** @class */ (function () {
                 _angular_common__WEBPACK_IMPORTED_MODULE_3__["CommonModule"],
                 app_main_pages_authentication_login_2_login_2_module__WEBPACK_IMPORTED_MODULE_2__["Login2Module"],
                 _sales_module_sales_module_module__WEBPACK_IMPORTED_MODULE_4__["SalesModule"], _project_module_project_module_module__WEBPACK_IMPORTED_MODULE_5__["ProjectModule"], _project_module_awo_project_module_awo_module__WEBPACK_IMPORTED_MODULE_6__["ProjectAfterWOModule"], _payment_payment_module__WEBPACK_IMPORTED_MODULE_7__["PaymentModule"], _receipt_receipt_module__WEBPACK_IMPORTED_MODULE_8__["ReceiptModule"], _dashboards_sales_dash_sales_dash_module__WEBPACK_IMPORTED_MODULE_9__["SalesDashboardModule"], _reports_reports_module__WEBPACK_IMPORTED_MODULE_10__["ReportsModule"],
-                _migrated_data_migrated_data_module__WEBPACK_IMPORTED_MODULE_11__["MigratedDataModule"], _admin_services_admin_module__WEBPACK_IMPORTED_MODULE_14__["AdminModule"], _project_module_bwo_app_project_module_bwo_app_module__WEBPACK_IMPORTED_MODULE_12__["AppProjectBWOModule"], _online_module_online_module_module__WEBPACK_IMPORTED_MODULE_13__["OnlineModule"], _project_module_bwo_app_project_module_bwo_app_module__WEBPACK_IMPORTED_MODULE_12__["AppProjectBWOModule"]
+                _migrated_data_migrated_data_module__WEBPACK_IMPORTED_MODULE_11__["MigratedDataModule"], _admin_services_admin_module__WEBPACK_IMPORTED_MODULE_14__["AdminModule"], _project_module_bwo_app_project_module_bwo_app_module__WEBPACK_IMPORTED_MODULE_12__["AppProjectBWOModule"], _online_module_online_module_module__WEBPACK_IMPORTED_MODULE_13__["OnlineModule"], _project_module_bwo_app_project_module_bwo_app_module__WEBPACK_IMPORTED_MODULE_12__["AppProjectBWOModule"], _users_users_module__WEBPACK_IMPORTED_MODULE_15__["UsersModule"]
                 //CertificationModule
             ],
         })

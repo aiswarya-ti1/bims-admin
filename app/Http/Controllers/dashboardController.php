@@ -79,6 +79,9 @@ $itemsCount=count($items);
 		->where('customFlag',0)->get();
 		$resp=array($keys);
 		return $resp;*/
+		$newarray=[];
+		$workKeys=\DB::table('wo_key_deliverables')->where('Work_ID',$id)->where('Delete_Flag',0)
+		->pluck('Key_ID');
 
 		$service_Id=\DB::table('work_service_map')->where('Work_ID', $id)->pluck('Service_ID');
 	if(!empty($service_Id))
@@ -86,15 +89,17 @@ $itemsCount=count($items);
 		$keys=\DB::table('key_deliverables')->whereIn('Service_ID',$service_Id)
 		->where('DeleteFlag',0)
 		->get();
-		$resp=array($keys);
-		return $resp;
-		
-			
-		
-		}
+	}
+	$keys_filter=collect($keys)->whereNotIn('Key_ID',$workKeys);
+foreach($keys_filter as $k)
+{
+	array_push($newarray, $k);
+}
 	
-	$res=array($keys);
-	return $res;
+$resp=array($newarray);
+return $resp;
+	
+	
 	}
 	public function chkKeyDeliExists($id)
 	{

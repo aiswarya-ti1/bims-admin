@@ -13,7 +13,7 @@ return [
     |
     */
 
-    'name' => env('APP_NAME', 'Laravel'),
+    'name' => env('APP_NAME', 'Wisebrix'),
 
     /*
     |--------------------------------------------------------------------------
@@ -148,6 +148,7 @@ return [
         Illuminate\View\ViewServiceProvider::class,
         Tymon\JWTAuth\Providers\LaravelServiceProvider::class,
 
+
         /*
          * Package Service Providers...
          */
@@ -160,6 +161,10 @@ return [
         // App\Providers\BroadcastServiceProvider::class,
         App\Providers\EventServiceProvider::class,
         App\Providers\RouteServiceProvider::class,
+       // Barryvdh\DomPDF\ServiceProvider::class,
+       Meneses\LaravelMpdf\LaravelMpdfServiceProvider::class,
+       Nexmo\Laravel\NexmoServiceProvider::class,
+        
 
     ],
 
@@ -209,7 +214,11 @@ return [
         'URL' => Illuminate\Support\Facades\URL::class,
         'Validator' => Illuminate\Support\Facades\Validator::class,
         'View' => Illuminate\Support\Facades\View::class,
-		'Excel' => 'Maatwebsite\Excel\Facades\Excel'
+        //'PDF' => Barryvdh\DomPDF\Facade::class,
+        'PDF' => Meneses\LaravelMpdf\Facades\LaravelMpdf::class,
+        'Excel' => 'Maatwebsite\Excel\Facades\Excel',
+        'Nexmo' => Nexmo\Laravel\Facade\Nexmo::class,
+
 
     ],
 

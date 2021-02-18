@@ -853,15 +853,49 @@ public function chkAmendPaySchedExists($id, $no)
 	return $resp;
 }
 
-public function getTerms()
+public function getTerms($id)
 {
+	$newArray=[];
+	$workTerms=\DB::table('wo_terms_conditions')->where('Work_ID',$id)->where('Delete_Flag',0)
+	->pluck('Term_ID');
+	
+
 	$terms=\DB::table('terms_conditions')
 	->where('AllWorkFlag',1)
 	->where('DeleteFlag',0)//->where('Segment_ID',8)
 	//->where('Segment_ID',11)
 	->get();
-	$resp=array($terms);
+	/*if($workTerms->isEmpty())
+	{
+		$resp=array($terms);
 	return $resp;
+	}
+	else{
+		foreach($terms as $term)
+	{
+	foreach($workTerms as $wt)
+	{
+		if(($term->Term_ID) == ($wt->Term_ID))
+		{
+$terms->forget($term);
+		}
+	}
+}
+	}
+	
+foreach($terms as $t)
+{
+	array_push($newArray, $t);
+}*/
+$terms_filter=collect($terms)->whereNotIn('Term_ID',$workTerms);
+foreach($terms_filter as $t)
+{
+	array_push($newArray, $t);
+}
+	
+$resp=array($newArray);
+return $resp;
+	
 }
 
 public function saveTerms(Request $r)
@@ -1422,7 +1456,9 @@ public function updateWOIssueDate(Request $r)
 	$IssueDate=new DateTime($data['woIssueDate']);
 	$IssueDate->modify('+1 day');
 	$updation=\DB::table('work_timeline')->insert(array('Work_ID'=>$data['workid'], 'Work_Attrb_ID'=>27, 'Value'=>$IssueDate->format('Y-m-d')));
-	$resp=array("Success"=>true);
+
+	
+	$resp=array("Success"=>1);
 	return $resp;
 }
 public function updateAmendIssueDate(Request $r)
